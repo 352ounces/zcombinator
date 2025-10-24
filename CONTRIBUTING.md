@@ -1,6 +1,7 @@
 # Contributing
 
-This project uses **market-based governance**. Your PRs become prediction markets that determine what gets merged.
+This project uses **market-based governance**. Your PRs become decision markets that determine what gets merged.
+
 **[MARKET GOVERNANCE IS STILL BEING BUILT. IN THE MEANTIME, REWARDS ARE DETERMINED BY THE ZC TEAM]**
 
 ## How It Works
