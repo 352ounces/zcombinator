@@ -117,6 +117,15 @@ export interface DesignatedClaim {
   created_at?: Date;
 }
 
+export interface EmissionSplit {
+  id?: number;
+  token_address: string;
+  recipient_wallet: string;
+  split_percentage: number; // 0-100
+  label?: string | null;
+  created_at?: Date;
+}
+
 export interface Presale {
   id?: number;
   token_address: string;
@@ -502,6 +511,23 @@ export async function initializeDatabase(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_designated_claims_verified_wallet ON designated_claims(verified_wallet);
     CREATE INDEX IF NOT EXISTS idx_designated_claims_verified_embedded ON designated_claims(verified_embedded_wallet);
 
+    -- Emission splits table for multi-claimer support
+    CREATE TABLE IF NOT EXISTS emission_splits (
+      id SERIAL PRIMARY KEY,
+      token_address TEXT NOT NULL,
+      recipient_wallet TEXT NOT NULL,
+      split_percentage DECIMAL(5,2) NOT NULL,
+      label TEXT,
+      created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+      UNIQUE(token_address, recipient_wallet),
+      CHECK(split_percentage > 0 AND split_percentage <= 100),
+      FOREIGN KEY (token_address) REFERENCES token_launches(token_address) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_emission_splits_token ON emission_splits(token_address);
+    CREATE INDEX IF NOT EXISTS idx_emission_splits_recipient ON emission_splits(recipient_wallet);
+
     -- Security tables for verification
     CREATE TABLE IF NOT EXISTS verification_challenges (
       id SERIAL PRIMARY KEY,
@@ -600,6 +626,44 @@ export async function initializeDatabase(): Promise<void> {
     ALTER TABLE presale_bids ADD COLUMN IF NOT EXISTS block_time INTEGER;
     ALTER TABLE presale_bids ADD COLUMN IF NOT EXISTS slot BIGINT;
     ALTER TABLE presale_bids ADD COLUMN IF NOT EXISTS verified_at TIMESTAMP WITH TIME ZONE;
+
+    -- Validation function for emission splits total
+    CREATE OR REPLACE FUNCTION validate_emission_splits_total()
+    RETURNS TRIGGER AS $$
+    DECLARE
+      total_percentage DECIMAL(5,2);
+    BEGIN
+      SELECT COALESCE(SUM(split_percentage), 0) INTO total_percentage
+      FROM emission_splits
+      WHERE token_address = NEW.token_address;
+
+      IF total_percentage > 100.00 THEN
+        RAISE EXCEPTION 'Total emission splits exceed 100%% (currently: %%)', total_percentage;
+      END IF;
+
+      RETURN NEW;
+    END;
+    $$ LANGUAGE plpgsql;
+
+    -- Create trigger for emission splits validation
+    DROP TRIGGER IF EXISTS check_splits_total ON emission_splits;
+    CREATE TRIGGER check_splits_total
+      AFTER INSERT OR UPDATE ON emission_splits
+      FOR EACH ROW
+      EXECUTE FUNCTION validate_emission_splits_total();
+
+    -- Migration: Backfill emission_splits for existing tokens (100% to creator)
+    INSERT INTO emission_splits (token_address, recipient_wallet, split_percentage, label)
+    SELECT
+      token_address,
+      creator_wallet,
+      100.00,
+      'Creator'
+    FROM token_launches
+    WHERE token_address NOT IN (
+      SELECT DISTINCT token_address FROM emission_splits
+    )
+    ON CONFLICT (token_address, recipient_wallet) DO NOTHING;
   `;
 
   try {
@@ -1819,6 +1883,174 @@ export async function getPresaleClaimsByPresale(presaleId: number): Promise<Pres
     return result.rows;
   } catch (error) {
     console.error('Error fetching presale claims:', error);
+    throw error;
+  }
+}
+
+// ========================================
+// Emission Splits Functions
+// ========================================
+
+/**
+ * Create emission splits for a token
+ * Called during token launch to configure multiple claimers
+ * @param tokenAddress - The token address
+ * @param splits - Array of split configurations
+ * @returns Array of created emission splits
+ */
+export async function createEmissionSplits(
+  tokenAddress: string,
+  splits: Array<{
+    recipient_wallet: string;
+    split_percentage: number;
+    label?: string;
+  }>
+): Promise<EmissionSplit[]> {
+  const pool = getPool();
+
+  // Validate total percentage
+  const totalPercentage = splits.reduce((sum, s) => sum + s.split_percentage, 0);
+  if (totalPercentage > 100) {
+    throw new Error(`Total split percentage (${totalPercentage}%) exceeds 100%`);
+  }
+
+  // Validate no duplicate wallets
+  const wallets = splits.map(s => s.recipient_wallet);
+  const uniqueWallets = new Set(wallets);
+  if (wallets.length !== uniqueWallets.size) {
+    throw new Error('Duplicate wallet addresses found in splits');
+  }
+
+  const results: EmissionSplit[] = [];
+
+  for (const split of splits) {
+    const query = `
+      INSERT INTO emission_splits (
+        token_address,
+        recipient_wallet,
+        split_percentage,
+        label
+      ) VALUES ($1, $2, $3, $4)
+      RETURNING *
+    `;
+
+    try {
+      const result = await pool.query(query, [
+        tokenAddress,
+        split.recipient_wallet,
+        split.split_percentage,
+        split.label || null
+      ]);
+
+      results.push(result.rows[0]);
+    } catch (error) {
+      console.error(`Error creating emission split for ${split.recipient_wallet}:`, error);
+      throw error;
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Get all emission splits for a token
+ * @param tokenAddress - The token address
+ * @returns Array of emission splits ordered by percentage (highest first)
+ */
+export async function getEmissionSplits(tokenAddress: string): Promise<EmissionSplit[]> {
+  const pool = getPool();
+
+  const query = `
+    SELECT * FROM emission_splits
+    WHERE token_address = $1
+    ORDER BY split_percentage DESC
+  `;
+
+  try {
+    const result = await pool.query(query, [tokenAddress]);
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching emission splits:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get emission split for a specific wallet and token
+ * @param tokenAddress - The token address
+ * @param walletAddress - The wallet address
+ * @returns Emission split if exists, null otherwise
+ */
+export async function getWalletEmissionSplit(
+  tokenAddress: string,
+  walletAddress: string
+): Promise<EmissionSplit | null> {
+  const pool = getPool();
+
+  const query = `
+    SELECT * FROM emission_splits
+    WHERE token_address = $1 AND recipient_wallet = $2
+    LIMIT 1
+  `;
+
+  try {
+    const result = await pool.query(query, [tokenAddress, walletAddress]);
+    return result.rows.length > 0 ? result.rows[0] : null;
+  } catch (error) {
+    console.error('Error fetching wallet emission split:', error);
+    throw error;
+  }
+}
+
+/**
+ * Check if a wallet has claim rights for a token
+ * @param tokenAddress - The token address
+ * @param walletAddress - The wallet address
+ * @returns True if wallet has claim rights, false otherwise
+ */
+export async function hasClaimRights(
+  tokenAddress: string,
+  walletAddress: string
+): Promise<boolean> {
+  const split = await getWalletEmissionSplit(tokenAddress, walletAddress);
+
+  // Check if they have a split configured
+  if (split && split.split_percentage > 0) {
+    return true;
+  }
+
+  // Fallback: Check if they're the original creator (for tokens without splits)
+  const launch = await getTokenLaunchByAddress(tokenAddress);
+  if (launch && launch.creator_wallet === walletAddress) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Get all tokens where a wallet has claim rights
+ * Includes tokens where wallet is creator OR has emission split
+ * @param walletAddress - The wallet address
+ * @returns Array of token launches where wallet can claim
+ */
+export async function getTokensWithClaimRights(walletAddress: string): Promise<TokenLaunch[]> {
+  const pool = getPool();
+
+  const query = `
+    SELECT DISTINCT tl.*
+    FROM token_launches tl
+    LEFT JOIN emission_splits es ON tl.token_address = es.token_address
+    WHERE tl.creator_wallet = $1
+       OR es.recipient_wallet = $1
+    ORDER BY tl.launch_time DESC
+  `;
+
+  try {
+    const result = await pool.query(query, [walletAddress]);
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching tokens with claim rights:', error);
     throw error;
   }
 }
