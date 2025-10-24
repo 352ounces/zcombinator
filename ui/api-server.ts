@@ -62,7 +62,9 @@ import {
   getPresaleBids,
   getTotalPresaleBids,
   recordPresaleBid,
-  getPresaleBidBySignature
+  getPresaleBidBySignature,
+  getEmissionSplits,
+  hasClaimRights
 } from './lib/db';
 import { calculateClaimEligibility } from './lib/helius';
 import {
@@ -96,7 +98,6 @@ interface ClaimTransaction {
   tokenAddress: string;
   userWallet: string;
   claimAmount: string;
-  userTokenAccount: string;
   mintDecimals: number;
   timestamp: number;
 }
@@ -449,9 +450,9 @@ const createMintTransaction = async (req: Request<Record<string, never>, MintCla
       return res.status(400).json(errorResponse);
     }
 
-    // Calculate 90/10 split (developer gets 90%, admin gets 10%)
-    const developerAmount = (requestedAmount * BigInt(9)) / BigInt(10);
-    const adminAmount = requestedAmount - developerAmount; // Ensures total equals exactly requestedAmount
+    // Calculate 90/10 split (claimers get 90%, admin gets 10%)
+    const claimersTotal = (requestedAmount * BigInt(9)) / BigInt(10);
+    const adminAmount = requestedAmount - claimersTotal; // Ensures total equals exactly requestedAmount
 
     // Validate claim eligibility from on-chain data
     const claimEligibility = await calculateClaimEligibility(tokenAddress, tokenLaunchTime);
@@ -489,17 +490,11 @@ const createMintTransaction = async (req: Request<Record<string, never>, MintCla
         return res.status(403).json(errorResponse);
       }
     } else {
-      // Normal token - only creator can claim
-      const creatorWallet = await getTokenCreatorWallet(tokenAddress);
-      if (!creatorWallet) {
-        const errorResponse = { error: 'Token creator not found' };
-        console.log("claim/mint error response:", errorResponse);
-        return res.status(400).json(errorResponse);
-      }
-
-      if (userWallet !== creatorWallet.trim()) {
-        const errorResponse = { error: 'Only the token creator can claim rewards' };
-        console.log("claim/mint error response: Non-creator attempting to claim");
+      // Check for emission splits OR fall back to creator-only
+      const hasRights = await hasClaimRights(tokenAddress, userWallet);
+      if (!hasRights) {
+        const errorResponse = { error: 'You do not have claim rights for this token' };
+        console.log("claim/mint error response: User does not have claim rights");
         return res.status(403).json(errorResponse);
       }
     }
@@ -517,7 +512,6 @@ const createMintTransaction = async (req: Request<Record<string, never>, MintCla
     // Get mint info to calculate amount with decimals
     const mintInfo = await getMint(connection, tokenMint);
     const decimals = mintInfo.decimals;
-    const developerAmountWithDecimals = developerAmount * BigInt(10 ** decimals);
     const adminAmountWithDecimals = adminAmount * BigInt(10 ** decimals);
 
     // Verify protocol has mint authority
@@ -527,12 +521,56 @@ const createMintTransaction = async (req: Request<Record<string, never>, MintCla
       return res.status(400).json(errorResponse);
     }
 
-    // Get associated token account addresses (no creation yet)
-    const userTokenAccount = await getAssociatedTokenAddress(
-      tokenMint,
-      userPublicKey
-    );
+    // Query emission splits to determine distribution
+    const emissionSplits = await getEmissionSplits(tokenAddress);
 
+    // Calculate split amounts and prepare recipients
+    interface SplitRecipient {
+      wallet: string;
+      amount: bigint;
+      amountWithDecimals: bigint;
+      label?: string;
+    }
+
+    const splitRecipients: SplitRecipient[] = [];
+
+    if (emissionSplits.length > 0) {
+      // Distribute according to configured splits
+      console.log(`Found ${emissionSplits.length} emission splits for token ${tokenAddress}`);
+
+      for (const split of emissionSplits) {
+        const splitAmount = (claimersTotal * BigInt(Math.floor(split.split_percentage * 100))) / BigInt(10000);
+        const splitAmountWithDecimals = splitAmount * BigInt(10 ** decimals);
+
+        splitRecipients.push({
+          wallet: split.recipient_wallet,
+          amount: splitAmount,
+          amountWithDecimals: splitAmountWithDecimals,
+          label: split.label || undefined
+        });
+
+        console.log(`Split: ${split.split_percentage}% to ${split.recipient_wallet}${split.label ? ` (${split.label})` : ''}`);
+      }
+    } else {
+      // No splits configured - fall back to 100% to creator
+      const creatorWallet = await getTokenCreatorWallet(tokenAddress);
+      if (!creatorWallet) {
+        const errorResponse = { error: 'Token creator not found' };
+        console.log("claim/mint error response:", errorResponse);
+        return res.status(400).json(errorResponse);
+      }
+
+      splitRecipients.push({
+        wallet: creatorWallet.trim(),
+        amount: claimersTotal,
+        amountWithDecimals: claimersTotal * BigInt(10 ** decimals),
+        label: 'Creator'
+      });
+
+      console.log(`No emission splits found - 100% to creator ${creatorWallet}`);
+    }
+
+    // Get admin token account address
     const adminTokenAccount = await getAssociatedTokenAddress(
       tokenMint,
       adminPublicKey,
@@ -542,32 +580,41 @@ const createMintTransaction = async (req: Request<Record<string, never>, MintCla
     // Create mint transaction
     const transaction = new Transaction();
 
-    // Add idempotent instructions to create token accounts if needed
-    // User pays for both accounts
-    const createUserAccountInstruction = createAssociatedTokenAccountIdempotentInstruction(
-      userPublicKey, // payer (user pays for their own account)
-      userTokenAccount,
-      userPublicKey, // owner
-      tokenMint
-    );
-
+    // Add idempotent instruction to create admin account (user pays)
     const createAdminAccountInstruction = createAssociatedTokenAccountIdempotentInstruction(
-      userPublicKey, // payer (user pays for admin account too)
+      userPublicKey, // payer
       adminTokenAccount,
       adminPublicKey, // owner
       tokenMint
     );
-
-    transaction.add(createUserAccountInstruction);
     transaction.add(createAdminAccountInstruction);
 
-    // Add mint instruction for developer (90%)
-    const developerMintInstruction = createMintToInstruction(
-      tokenMint,
-      userTokenAccount,
-      protocolKeypair.publicKey,
-      developerAmountWithDecimals
-    );
+    // Create token accounts and mint instructions for each split recipient
+    for (const recipient of splitRecipients) {
+      const recipientPublicKey = new PublicKey(recipient.wallet);
+      const recipientTokenAccount = await getAssociatedTokenAddress(
+        tokenMint,
+        recipientPublicKey
+      );
+
+      // Add idempotent instruction to create recipient account (user pays)
+      const createRecipientAccountInstruction = createAssociatedTokenAccountIdempotentInstruction(
+        userPublicKey, // payer
+        recipientTokenAccount,
+        recipientPublicKey, // owner
+        tokenMint
+      );
+      transaction.add(createRecipientAccountInstruction);
+
+      // Add mint instruction for this recipient
+      const recipientMintInstruction = createMintToInstruction(
+        tokenMint,
+        recipientTokenAccount,
+        protocolKeypair.publicKey,
+        recipient.amountWithDecimals
+      );
+      transaction.add(recipientMintInstruction);
+    }
 
     // Add mint instruction for admin (10%)
     const adminMintInstruction = createMintToInstruction(
@@ -576,8 +623,6 @@ const createMintTransaction = async (req: Request<Record<string, never>, MintCla
       protocolKeypair.publicKey,
       adminAmountWithDecimals
     );
-
-    transaction.add(developerMintInstruction);
     transaction.add(adminMintInstruction);
 
     // Get latest blockhash and set fee payer to user
@@ -601,14 +646,17 @@ const createMintTransaction = async (req: Request<Record<string, never>, MintCla
       tokenAddress,
       userWallet,
       claimAmount,
-      userTokenAccount: userTokenAccount.toString(),
       mintDecimals: decimals,
       timestamp: Date.now()
     });
 
-    // Store split amounts and admin account for validation in confirm endpoint
+    // Store split recipients and admin info for validation in confirm endpoint
     const transactionMetadata = {
-      developerAmount: developerAmount.toString(),
+      splitRecipients: splitRecipients.map(r => ({
+        wallet: r.wallet,
+        amount: r.amount.toString(),
+        label: r.label
+      })),
       adminAmount: adminAmount.toString(),
       adminTokenAccount: adminTokenAccount.toString()
     };
@@ -623,9 +671,12 @@ const createMintTransaction = async (req: Request<Record<string, never>, MintCla
       success: true as const,
       transaction: bs58.encode(serializedTransaction),
       transactionKey,
-      userTokenAccount: userTokenAccount.toString(),
       claimAmount: requestedAmount.toString(),
-      developerAmount: developerAmount.toString(),
+      splitRecipients: splitRecipients.map(r => ({
+        wallet: r.wallet,
+        amount: r.amount.toString(),
+        label: r.label
+      })),
       adminAmount: adminAmount.toString(),
       mintDecimals: decimals,
       message: 'Sign this transaction and submit to /claims/confirm'
@@ -782,34 +833,17 @@ const confirmClaim = async (req: Request<Record<string, never>, ConfirmClaimResp
         return res.status(403).json(errorResponse);
       }
     } else {
-      // Normal token - only creator can claim
-      const rawCreatorWallet = await getTokenCreatorWallet(claimData.tokenAddress);
-      console.log("Retrieved creatorWallet from database:", { rawCreatorWallet, type: typeof rawCreatorWallet, length: rawCreatorWallet?.length });
+      // Normal token - check if user has claim rights (via emission splits or creator status)
+      const hasRights = await hasClaimRights(claimData.tokenAddress, claimData.userWallet);
 
-      if (!rawCreatorWallet) {
-        const errorResponse = { error: 'Token creator not found' };
-        console.log("claim/confirm error response:", errorResponse);
-        return res.status(400).json(errorResponse);
-      }
-
-      // Clean and validate the creator wallet string
-      const creatorWallet = rawCreatorWallet.trim();
-      console.log("Cleaned creatorWallet:", { creatorWallet, length: creatorWallet.length });
-
-      if (!creatorWallet || creatorWallet.length < 32 || creatorWallet.length > 44) {
-        const errorResponse = { error: 'Invalid creator wallet format in database' };
-        console.log("claim/confirm error response:", errorResponse);
-        return res.status(400).json(errorResponse);
-      }
-
-      // For non-designated tokens, only the original creator can claim
-      if (claimData.userWallet !== creatorWallet) {
-        const errorResponse = { error: 'Only the token creator can claim rewards' };
-        console.log("claim/confirm error response: Non-creator attempting to claim");
+      if (!hasRights) {
+        const errorResponse = { error: 'You do not have claim rights for this token' };
+        console.log("claim/confirm error response: User does not have claim rights");
         return res.status(403).json(errorResponse);
       }
 
-      authorizedClaimWallet = creatorWallet;
+      authorizedClaimWallet = claimData.userWallet;
+      console.log("User has claim rights (via emission splits or creator status):", claimData.userWallet);
     }
 
     // At this point, authorizedClaimWallet is set to the wallet allowed to claim
@@ -1103,6 +1137,9 @@ const confirmClaim = async (req: Request<Record<string, never>, ConfirmClaimResp
     }
 
 
+    // Get split recipients from metadata before cleanup
+    const splitRecipients = metadata.splitRecipients || [];
+
     // Clean up the transaction data from memory
     claimTransactions.delete(transactionKey);
     claimTransactions.delete(`${transactionKey}_metadata`);
@@ -1111,8 +1148,8 @@ const confirmClaim = async (req: Request<Record<string, never>, ConfirmClaimResp
       success: true as const,
       transactionSignature: signature,
       tokenAddress: claimData.tokenAddress,
-      userTokenAccount: claimData.userTokenAccount,
       claimAmount: claimData.claimAmount,
+      splitRecipients,
       confirmation
     };
 
