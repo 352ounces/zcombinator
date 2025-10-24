@@ -2,7 +2,7 @@
 
 ## What it is
 
-Z Combinator allows developers to launch projects with tokens with controlled emission schedules. For the market, this enables long term, consistent funding while aligning incentives between the developer and their token. For the dev, this enables the ability to bootstrap attention and incentivize product growth dynamically, understanding the market and iterating on builds faster than otherwise possible.
+Z Combinator allows developers to launch projects with tokens with controlled emission schedules. For the market, this aligns incentives between the developer and their token. For the dev, this enables long term, consistent funding, along with the ability to bootstrap attention and incentivize product growth dynamically. Devs can understand their market and iterate on builds faster than otherwise possible.
 
 
 ## How to earn
