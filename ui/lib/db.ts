@@ -652,18 +652,8 @@ export async function initializeDatabase(): Promise<void> {
       FOR EACH ROW
       EXECUTE FUNCTION validate_emission_splits_total();
 
-    -- Migration: Backfill emission_splits for existing tokens (100% to creator)
-    INSERT INTO emission_splits (token_address, recipient_wallet, split_percentage, label)
-    SELECT
-      token_address,
-      creator_wallet,
-      100.00,
-      'Creator'
-    FROM token_launches
-    WHERE token_address NOT IN (
-      SELECT DISTINCT token_address FROM emission_splits
-    )
-    ON CONFLICT (token_address, recipient_wallet) DO NOTHING;
+    -- Note: No automatic backfill. Emission splits are opt-in via PR/admin configuration.
+    -- The hasClaimRights() function falls back to creator_wallet for backwards compatibility.
   `;
 
   try {
