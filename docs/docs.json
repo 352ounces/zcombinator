@@ -85,6 +85,11 @@
           "anchor": "Support",
           "href": "https://x.com/zcombinatorio",
           "icon": "headset"
+        },
+        {
+          "anchor": "GitHub",
+          "href": "https://github.com/zcombinatorio/zcombinator",
+          "icon": "github"
         }
       ]
     }
@@ -112,7 +117,8 @@
   },
   "footer": {
     "socials": {
-      "x": "https://x.com/zcombinatorio"
+      "x": "https://x.com/zcombinatorio",
+      "github": "https://github.com/zcombinatorio/zcombinator"
     }
   },
   "css": "/custom.css"
