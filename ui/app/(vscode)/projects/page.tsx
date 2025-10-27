@@ -4,6 +4,7 @@ import { TokenCardVSCode } from '@/components/TokenCardVSCode';
 import { useEffect, useState, useMemo } from 'react';
 import { useWallet } from '@/components/WalletProvider';
 import { useTabContext } from '@/contexts/TabContext';
+import { useRouter } from 'next/navigation';
 
 interface TokenLaunch {
   id: number;
@@ -43,6 +44,7 @@ interface MarketData {
 export default function ProjectsPage() {
   const { wallet, externalWallet } = useWallet();
   const { addTab } = useTabContext();
+  const router = useRouter();
   const [tokens, setTokens] = useState<TokenLaunch[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'verified' | 'all'>('verified');
@@ -170,6 +172,7 @@ export default function ProjectsPage() {
 
   const handleRowClick = (token: TokenLaunch) => {
     addTab('history', token.token_address, token.token_symbol || 'Unknown');
+    router.push(`/history/${token.token_address}`);
   };
 
   // Memoize filtered tokens to avoid recalculating on every render
