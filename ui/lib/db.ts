@@ -735,6 +735,63 @@ export async function hasRecentClaim(
 }
 
 /**
+ * Check if a SPECIFIC wallet has claimed this token within the specified time window
+ * Used for per-wallet claim cooldowns with emission splits
+ * Returns true if wallet has a recent claim, false otherwise
+ */
+export async function hasRecentClaimByWallet(
+  tokenAddress: string,
+  walletAddress: string,
+  minutesAgo: number = 360
+): Promise<boolean> {
+  const pool = getPool();
+
+  const query = `
+    SELECT COUNT(*) as count
+    FROM claim_records
+    WHERE token_address = $1
+      AND wallet_address = $2
+      AND confirmed_at > NOW() - INTERVAL '${minutesAgo} minutes'
+  `;
+
+  try {
+    const result = await pool.query(query, [tokenAddress, walletAddress]);
+    return parseInt(result.rows[0].count) > 0;
+  } catch (error) {
+    console.error('Error checking recent claims by wallet:', error);
+    // Fail safe - if we can't check, assume they have claimed
+    return true;
+  }
+}
+
+/**
+ * Get total amount claimed by a specific wallet for a token
+ * Used to calculate remaining claimable amount with emission splits
+ */
+export async function getTotalClaimedByWallet(
+  tokenAddress: string,
+  walletAddress: string
+): Promise<bigint> {
+  const pool = getPool();
+
+  const query = `
+    SELECT COALESCE(SUM(CAST(amount AS BIGINT)), 0) as total
+    FROM claim_records
+    WHERE token_address = $1
+      AND wallet_address = $2
+      AND confirmed_at IS NOT NULL
+  `;
+
+  try {
+    const result = await pool.query(query, [tokenAddress, walletAddress]);
+    return BigInt(result.rows[0].total);
+  } catch (error) {
+    console.error('Error getting total claimed by wallet:', error);
+    throw error;
+  }
+}
+
+/**
  * Pre-record a claim attempt in the database with a placeholder signature
  * This prevents double-claiming by creating the DB record BEFORE signing
  * Returns a unique claim ID that can be used to update the record later
