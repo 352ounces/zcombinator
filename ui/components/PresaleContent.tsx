@@ -388,6 +388,10 @@ export function PresaleContent() {
     return `${address.slice(0, 4)}....${address.slice(-4)}`;
   };
 
+  const formatWalletAddressMobile = (address: string) => {
+    return `${address.slice(0, 6)}...${address.slice(-6)}`;
+  };
+
   const copyToClipboard = (address: string) => {
     navigator.clipboard.writeText(address);
     setCopiedAddress(address);
@@ -459,8 +463,8 @@ export function PresaleContent() {
 
       <p className="mt-7 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}${presale.token_symbol} presale</p>
 
-      {/* Token Info */}
-      <div className="mt-1 flex items-center gap-4">
+      {/* Token Info - Desktop */}
+      <div className="mt-1 hidden md:flex items-center gap-4">
         {metadata?.image && (
           <img
             src={metadata.image}
@@ -471,6 +475,30 @@ export function PresaleContent() {
         <div>
           <p className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
             <span className="text-white">${presale.token_symbol}</span> {presale.token_name} <span className="text-gray-500 ml-4">Status:</span> <span className={`${presale.status === 'launched' ? 'text-[#b2e9fe]' : presale.status === 'pending' ? 'text-yellow-400' : 'text-red-400'}`} style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{presale.status.toUpperCase()}</span>
+          </p>
+          {metadata?.description && (
+            <p className="mt-0.5 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+              {metadata.description}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* Token Info - Mobile */}
+      <div className="mt-1 md:hidden flex items-center gap-4">
+        {metadata?.image && (
+          <img
+            src={metadata.image}
+            alt={presale.token_symbol}
+            className="w-10 h-10 rounded object-cover"
+          />
+        )}
+        <div>
+          <p className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+            <span className="text-white">${presale.token_symbol}</span> {presale.token_name}
+          </p>
+          <p className="text-[14px] text-gray-300 mt-0.5" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+            <span className="text-gray-500">Status:</span> <span className={`${presale.status === 'launched' ? 'text-[#b2e9fe]' : presale.status === 'pending' ? 'text-yellow-400' : 'text-red-400'}`}>{presale.status.toUpperCase()}</span>
           </p>
           {metadata?.description && (
             <p className="mt-0.5 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
@@ -495,7 +523,8 @@ export function PresaleContent() {
                   className="text-[14px] text-gray-300 pb-0"
                   style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
                 >
-                  {token}
+                  <span className="hidden md:inline">{token}</span>
+                  <span className="md:hidden">{formatWalletAddressMobile(token)}</span>
                 </p>
               ))}
             </div>
@@ -591,7 +620,12 @@ export function PresaleContent() {
                     onClick={() => copyToClipboard(contribution.wallet)}
                     className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors"
                   >
-                    {copiedAddress === contribution.wallet ? '✓ Copied' : formatWalletAddress(contribution.wallet)}
+                    {copiedAddress === contribution.wallet ? '✓ Copied' : (
+                      <>
+                        <span className="hidden md:inline">{formatWalletAddress(contribution.wallet)}</span>
+                        <span className="md:hidden">{formatWalletAddressMobile(contribution.wallet)}</span>
+                      </>
+                    )}
                   </button>
                   <span className="text-[14px] text-white">{contribution.amount.toFixed(0)} $ZC</span>
                 </div>
