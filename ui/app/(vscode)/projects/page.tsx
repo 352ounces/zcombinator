@@ -4,7 +4,7 @@ import { TokenCardVSCode } from '@/components/TokenCardVSCode';
 import { useEffect, useState, useMemo } from 'react';
 import { useWallet } from '@/components/WalletProvider';
 import { useTabContext } from '@/contexts/TabContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface TokenLaunch {
   id: number;
@@ -45,6 +45,7 @@ export default function ProjectsPage() {
   const { wallet, externalWallet } = useWallet();
   const { addTab } = useTabContext();
   const router = useRouter();
+  const pathname = usePathname();
   const [tokens, setTokens] = useState<TokenLaunch[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<'verified' | 'all'>('verified');
@@ -171,7 +172,7 @@ export default function ProjectsPage() {
   };
 
   const handleRowClick = (token: TokenLaunch) => {
-    addTab('history', token.token_address, token.token_symbol || 'Unknown');
+    addTab('history', token.token_address, token.token_symbol || 'Unknown', pathname);
     router.push(`/history/${token.token_address}`);
   };
 

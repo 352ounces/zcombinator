@@ -42,10 +42,10 @@ export function TabBar() {
     e.stopPropagation();
     closeTab(id);
 
-    // If closing the current tab, navigate to fallback
+    // If closing the current tab, navigate to origin route
     const currentPath = `/${tab.type}/${tab.tokenAddress}`;
     if (pathname === currentPath) {
-      router.push('/portfolio');
+      router.push(tab.originRoute || '/portfolio');
     }
   };
 

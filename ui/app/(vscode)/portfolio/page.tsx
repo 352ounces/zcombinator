@@ -6,7 +6,7 @@ import { SecureVerificationModal } from '@/components/SecureVerificationModal';
 import { useState, useEffect } from 'react';
 import { usePrivy } from '@privy-io/react-auth';
 import { useTabContext } from '@/contexts/TabContext';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 
 interface TokenLaunch {
   id: number;
@@ -48,6 +48,7 @@ export default function PortfolioPage() {
   const { ready, login, authenticated, linkWallet } = usePrivy();
   const { addTab } = useTabContext();
   const router = useRouter();
+  const pathname = usePathname();
   const [launches, setLaunches] = useState<VerifiedTokenLaunch[]>([]);
   const [presales, setPresales] = useState<Presale[]>([]);
   const [loading, setLoading] = useState(true);
@@ -605,7 +606,7 @@ export default function PortfolioPage() {
                                 <button
                                   onClick={() => {
                                     const tabType = presale.status === 'launched' ? 'vesting' : 'presale';
-                                    addTab(tabType, presale.token_address, presale.token_symbol || 'Unknown');
+                                    addTab(tabType, presale.token_address, presale.token_symbol || 'Unknown', pathname);
                                     router.push(`/presale/${presale.token_address}`);
                                   }}
                                   className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
@@ -704,7 +705,7 @@ export default function PortfolioPage() {
                         <div className="flex items-center gap-8">
                           <button
                             onClick={() => {
-                              addTab('holders', launch.token_address, launch.token_symbol || 'Unknown');
+                              addTab('holders', launch.token_address, launch.token_symbol || 'Unknown', pathname);
                               router.push(`/holders/${launch.token_address}`);
                             }}
                             className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
@@ -714,7 +715,7 @@ export default function PortfolioPage() {
                           </button>
                           <button
                             onClick={() => {
-                              addTab('history', launch.token_address, launch.token_symbol || 'Unknown');
+                              addTab('history', launch.token_address, launch.token_symbol || 'Unknown', pathname);
                               router.push(`/history/${launch.token_address}`);
                             }}
                             className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
@@ -726,7 +727,7 @@ export default function PortfolioPage() {
                         <div className="flex items-center gap-4 ml-16">
                           <button
                             onClick={() => {
-                              addTab('transfer', launch.token_address, launch.token_symbol || 'Unknown');
+                              addTab('transfer', launch.token_address, launch.token_symbol || 'Unknown', pathname);
                               router.push(`/transfer/${launch.token_address}`);
                             }}
                             className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
@@ -743,7 +744,7 @@ export default function PortfolioPage() {
                           </button>
                           <button
                             onClick={() => {
-                              addTab('burn', launch.token_address, launch.token_symbol || 'Unknown');
+                              addTab('burn', launch.token_address, launch.token_symbol || 'Unknown', pathname);
                               router.push(`/burn/${launch.token_address}`);
                             }}
                             className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"

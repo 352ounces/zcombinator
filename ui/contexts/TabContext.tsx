@@ -7,11 +7,12 @@ export interface DynamicTab {
   type: 'history' | 'holders' | 'burn' | 'transfer' | 'presale' | 'vesting';
   tokenAddress: string;
   tokenSymbol: string;
+  originRoute: string;
 }
 
 interface TabContextType {
   dynamicTabs: DynamicTab[];
-  addTab: (type: 'history' | 'holders' | 'burn' | 'transfer' | 'presale' | 'vesting', tokenAddress: string, tokenSymbol: string) => void;
+  addTab: (type: 'history' | 'holders' | 'burn' | 'transfer' | 'presale' | 'vesting', tokenAddress: string, tokenSymbol: string, originRoute: string) => void;
   closeTab: (id: string) => void;
 }
 
@@ -30,7 +31,12 @@ export function TabProvider({ children }: { children: ReactNode }) {
       if (stored) {
         const parsed = JSON.parse(stored);
         if (parsed.dynamicTabs && Array.isArray(parsed.dynamicTabs)) {
-          setDynamicTabs(parsed.dynamicTabs);
+          // Migrate old tabs without originRoute to have default /portfolio origin
+          const migratedTabs = parsed.dynamicTabs.map((tab: any) => ({
+            ...tab,
+            originRoute: tab.originRoute || '/portfolio'
+          }));
+          setDynamicTabs(migratedTabs);
         }
       }
     } catch (error) {
@@ -56,7 +62,7 @@ export function TabProvider({ children }: { children: ReactNode }) {
     return () => clearTimeout(timeoutId);
   }, [dynamicTabs, isInitialized]);
 
-  const addTab = useCallback((type: 'history' | 'holders' | 'burn' | 'transfer' | 'presale' | 'vesting', tokenAddress: string, tokenSymbol: string) => {
+  const addTab = useCallback((type: 'history' | 'holders' | 'burn' | 'transfer' | 'presale' | 'vesting', tokenAddress: string, tokenSymbol: string, originRoute: string) => {
     const id = `${type}-${tokenAddress}`;
 
     setDynamicTabs(prev => {
@@ -73,7 +79,8 @@ export function TabProvider({ children }: { children: ReactNode }) {
           id,
           type,
           tokenAddress,
-          tokenSymbol
+          tokenSymbol,
+          originRoute
         };
         return [...prev, newTab];
       }
