@@ -41,20 +41,21 @@ export function TokenCardVSCode({
     return `${address.slice(0, 6)}...${address.slice(-6)}`;
   };
 
-  const formatTime = (timestamp: string) => {
+  const formatTime = (timestamp: string, includeSuffix = true) => {
     const date = new Date(timestamp);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
     const diffDays = Math.floor(diffHours / 24);
+    const suffix = includeSuffix ? ' ago' : '';
 
     if (diffDays > 0) {
-      return `${diffDays}d ago`;
+      return `${diffDays}d${suffix}`;
     } else if (diffHours > 0) {
-      return `${diffHours}h ago`;
+      return `${diffHours}h${suffix}`;
     } else {
       const diffMinutes = Math.floor(diffMs / (1000 * 60));
-      return diffMinutes > 0 ? `${diffMinutes}m ago` : 'just now';
+      return diffMinutes > 0 ? `${diffMinutes}m${suffix}` : 'just now';
     }
   };
 
@@ -105,7 +106,7 @@ export function TokenCardVSCode({
             <img
               src={metadata.image}
               alt={tokenName || 'Token'}
-              className="w-16 h-16 rounded object-cover"
+              className="w-12 h-12 md:w-16 md:h-16 rounded object-cover"
             />
           </div>
         )}
@@ -114,10 +115,32 @@ export function TokenCardVSCode({
         <div className="flex-1 min-w-0">
           {/* Name, Symbol, Market Cap, Time */}
           <div className="flex items-baseline gap-3 mb-1">
-            <h3 className="text-[14px] font-bold text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+            {/* Mobile: Show only symbol in white */}
+            <h3 className="md:hidden text-[14px] font-bold text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+              {tokenSymbol || '-'}
+            </h3>
+            {/* Mobile: CA inline with symbol */}
+            <button
+              onClick={(e) => handleCopyAddress(e)}
+              className="md:hidden text-gray-300 hover:text-[#b2e9fe] transition-colors flex items-center gap-1 text-[14px]"
+              style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+            >
+              {tokenAddress.slice(0, 6)}
+              {copiedAddress ? (
+                <svg className="w-3 h-3 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+              ) : (
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              )}
+            </button>
+            {/* Desktop: Show name and symbol */}
+            <h3 className="hidden md:block text-[14px] font-bold text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
               {tokenName || '-'}
             </h3>
-            <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+            <span className="hidden md:inline text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
               ({tokenSymbol || '-'})
             </span>
             {marketCap !== undefined && (
@@ -127,14 +150,15 @@ export function TokenCardVSCode({
             )}
             {launchTime && (
               <span className="text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                {formatTime(launchTime)}
+                <span className="md:hidden">{formatTime(launchTime, false)}</span>
+                <span className="hidden md:inline">{formatTime(launchTime, true)}</span>
               </span>
             )}
             {isCreator && (
               <Link
                 href="/portfolio"
                 onClick={(e) => e.stopPropagation()}
-                className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors"
+                className="hidden md:inline text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors"
                 style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
               >
                 [Manage]
@@ -144,17 +168,17 @@ export function TokenCardVSCode({
 
           {/* Description */}
           {metadata?.description && (
-            <p className="text-[14px] text-gray-300 mb-1" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+            <p className="text-[14px] text-gray-300 mb-1 line-clamp-2 md:line-clamp-none" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
               {metadata.description}
             </p>
           )}
 
           {/* CA, Creator, Links */}
           <div className="flex items-center gap-4 text-[14px]" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-            {/* CA */}
+            {/* CA - Desktop only (mobile shows inline with symbol) */}
             <button
               onClick={(e) => handleCopyAddress(e)}
-              className="text-gray-300 hover:text-[#b2e9fe] transition-colors flex items-center gap-1"
+              className="hidden md:flex text-gray-300 hover:text-[#b2e9fe] transition-colors items-center gap-1"
             >
               CA: {formatAddress(tokenAddress)}
               {copiedAddress ? (
@@ -170,7 +194,8 @@ export function TokenCardVSCode({
 
             {/* Creator Socials */}
             <span className="text-gray-300">
-              Creator: {formatSocials(creatorTwitter, creatorGithub)}
+              <span className="md:hidden">{formatSocials(creatorTwitter, creatorGithub)}</span>
+              <span className="hidden md:inline">Creator: {formatSocials(creatorTwitter, creatorGithub)}</span>
             </span>
 
             {/* Links */}

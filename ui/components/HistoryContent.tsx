@@ -449,8 +449,8 @@ export function HistoryContent({ tokenAddress, tokenSymbol = '' }: HistoryConten
 
               return (
                 <div key={tx.signature} className="pb-1">
-                  {/* Transaction Row */}
-                  <div className="flex items-center justify-between">
+                  {/* Transaction Row - Desktop */}
+                  <div className="hidden md:flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <button
                         onClick={() => {
@@ -507,6 +507,71 @@ export function HistoryContent({ tokenAddress, tokenSymbol = '' }: HistoryConten
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
                         </svg>
                       </a>
+                    </div>
+                  </div>
+
+                  {/* Transaction Row - Mobile */}
+                  <div className="md:hidden">
+                    {/* First Row: Icon, Label with amount and "to who", Solscan link */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => {
+                            if (hasMemo) {
+                              const newExpanded = new Set(expandedTransactions);
+                              if (isExpanded) {
+                                newExpanded.delete(tx.signature);
+                              } else {
+                                newExpanded.add(tx.signature);
+                              }
+                              setExpandedTransactions(newExpanded);
+                            }
+                          }}
+                          className={`text-white ${hasMemo ? 'cursor-pointer hover:opacity-80' : 'cursor-default'} transition-opacity`}
+                          aria-label={hasMemo ? (isExpanded ? "Collapse memo" : "Expand memo") : tx.type}
+                          disabled={!hasMemo}
+                        >
+                          {getTypeIcon(tx.type)}
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                            {(() => {
+                              const desc = getTransactionDescription(tx);
+                              return (
+                                <>
+                                  <span className={getTypeColor(tx.type)}>{desc.action}</span>
+                                  : {desc.description}
+                                  {desc.toUser && (
+                                    <span className={desc.toUserIsSocial ? 'font-bold' : ''}>
+                                      {desc.toUser}
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </span>
+                          <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                            ({parseFloat(calculateSupplyPercentage(tx.amount)).toFixed(1)}%)
+                          </span>
+                        </div>
+                      </div>
+                      <a
+                        href={`https://solscan.io/tx/${tx.signature}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
+                        title="View on Solscan"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    </div>
+                    {/* Second Row: Timestamp */}
+                    <div className="ml-8 mt-0.5">
+                      <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                        {formatDate(tx.timestamp)}
+                      </span>
                     </div>
                   </div>
                   {/* Memo Expansion */}

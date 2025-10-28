@@ -3,7 +3,7 @@
 import { WalletButton } from '@/components/WalletButton';
 import { ImageUpload } from '@/components/ImageUpload';
 import { useWallet } from '@/components/WalletProvider';
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import { Keypair, Transaction, Connection } from '@solana/web3.js';
 import { useSignTransaction } from '@privy-io/react-auth/solana';
 import { useRouter } from 'next/navigation';
@@ -14,6 +14,16 @@ export function LaunchContent() {
   const { activeWallet, externalWallet } = useWallet();
   const { signTransaction } = useSignTransaction();
   const router = useRouter();
+
+  // Detect mobile screen size for placeholder text
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -435,7 +445,7 @@ export function LaunchContent() {
               name="name"
               value={formData.name}
               onChange={handleInputChange}
-              placeholder="Enter token name here"
+              placeholder={isMobile ? "Enter here" : "Enter token name here"}
               maxLength={32}
               autoComplete="off"
               className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
@@ -445,7 +455,7 @@ export function LaunchContent() {
               }`}
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: formData.name ? `${formData.name.length}ch` : '21ch'
+                width: formData.name ? `${formData.name.length}ch` : (isMobile ? '10ch' : '21ch')
               }}
             />
             <span className="text-gray-500">{'}'}</span>
@@ -459,7 +469,7 @@ export function LaunchContent() {
               name="ticker"
               value={formData.ticker}
               onChange={handleInputChange}
-              placeholder="Enter ticker here"
+              placeholder={isMobile ? "Enter here" : "Enter ticker here"}
               maxLength={10}
               autoComplete="off"
               className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
@@ -469,7 +479,7 @@ export function LaunchContent() {
               }`}
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: formData.ticker ? `${formData.ticker.length}ch` : '17ch'
+                width: formData.ticker ? `${formData.ticker.length}ch` : (isMobile ? '10ch' : '17ch')
               }}
             />
             <span className="text-gray-500">{'}'}</span>
@@ -484,7 +494,7 @@ export function LaunchContent() {
               name="website"
               value={formData.website}
               onChange={handleInputChange}
-              placeholder="Enter project website URL here"
+              placeholder={isMobile ? "Enter here" : "Enter project website URL here"}
               autoComplete="off"
               className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
                 formData.website && !fieldValidity.website
@@ -493,7 +503,7 @@ export function LaunchContent() {
               }`}
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: formData.website ? `${formData.website.length}ch` : '30ch'
+                width: formData.website ? `${formData.website.length}ch` : (isMobile ? '10ch' : '30ch')
               }}
             />
             <span className="text-gray-500">{'}'}</span>
@@ -507,7 +517,7 @@ export function LaunchContent() {
               name="twitter"
               value={formData.twitter}
               onChange={handleInputChange}
-              placeholder="Enter X profile URL here"
+              placeholder={isMobile ? "Enter here" : "Enter X profile URL here"}
               autoComplete="off"
               className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
                 formData.twitter && !fieldValidity.twitter
@@ -516,7 +526,7 @@ export function LaunchContent() {
               }`}
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: formData.twitter ? `${formData.twitter.length}ch` : '24ch'
+                width: formData.twitter ? `${formData.twitter.length}ch` : (isMobile ? '10ch' : '24ch')
               }}
             />
             <span className="text-gray-500">{'}'}</span>
@@ -531,7 +541,7 @@ export function LaunchContent() {
               name="description"
               value={formData.description}
               onChange={handleInputChange}
-              placeholder="Enter project description here"
+              placeholder={isMobile ? "Enter here" : "Enter project description here"}
               maxLength={280}
               autoComplete="off"
               className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
@@ -541,7 +551,7 @@ export function LaunchContent() {
               }`}
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: formData.description ? `${formData.description.length}ch` : '30ch'
+                width: formData.description ? `${formData.description.length}ch` : (isMobile ? '10ch' : '30ch')
               }}
             />
             <span className="text-gray-500">{'}'}</span>
@@ -558,7 +568,7 @@ export function LaunchContent() {
               name="caEnding"
               value={formData.caEnding}
               onChange={handleInputChange}
-              placeholder="Enter desired CA ending here"
+              placeholder={isMobile ? "Enter here" : "Enter desired CA ending here"}
               maxLength={3}
               autoComplete="off"
               className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
@@ -568,7 +578,7 @@ export function LaunchContent() {
               }`}
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: formData.caEnding ? `${formData.caEnding.length}ch` : '28ch'
+                width: formData.caEnding ? `${formData.caEnding.length}ch` : (isMobile ? '10ch' : '28ch')
               }}
             />
             <span className="text-gray-500">{'}'}</span>
@@ -630,7 +640,7 @@ export function LaunchContent() {
                       type="text"
                       value={token}
                       onChange={(e) => handlePresaleTokenChange(index, e.target.value)}
-                      placeholder="Enter token CA here"
+                      placeholder={isMobile ? "Enter here" : "Enter token CA here"}
                       autoComplete="off"
                       className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
                         token && !validateSolanaAddress(token)
@@ -639,7 +649,7 @@ export function LaunchContent() {
                       }`}
                       style={{
                         fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                        width: token ? `${token.length}ch` : '19ch'
+                        width: token ? `${token.length}ch` : (isMobile ? '10ch' : '19ch')
                       }}
                     />
                     <span className="text-gray-500">{'}'}</span>
@@ -676,7 +686,7 @@ export function LaunchContent() {
               name="creatorTwitter"
               value={formData.creatorTwitter}
               onChange={handleInputChange}
-              placeholder="Enter the other person's X profile URL"
+              placeholder={isMobile ? "Enter here" : "Enter the other person's X profile URL"}
               autoComplete="off"
               className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
                 formData.creatorTwitter && !fieldValidity.creatorTwitter
@@ -685,7 +695,7 @@ export function LaunchContent() {
               }`}
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: formData.creatorTwitter ? `${formData.creatorTwitter.length}ch` : '38ch'
+                width: formData.creatorTwitter ? `${formData.creatorTwitter.length}ch` : (isMobile ? '10ch' : '38ch')
               }}
             />
             <span className="text-gray-500">{'}'}</span>
@@ -699,7 +709,7 @@ export function LaunchContent() {
               name="creatorGithub"
               value={formData.creatorGithub}
               onChange={handleInputChange}
-              placeholder="Enter the other person's Github profile URL"
+              placeholder={isMobile ? "Enter here" : "Enter the other person's Github profile URL"}
               autoComplete="off"
               className={`bg-transparent border-0 focus:outline-none placeholder:text-gray-500 ${
                 formData.creatorGithub && !fieldValidity.creatorGithub
@@ -708,7 +718,7 @@ export function LaunchContent() {
               }`}
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: formData.creatorGithub ? `${formData.creatorGithub.length}ch` : '43ch'
+                width: formData.creatorGithub ? `${formData.creatorGithub.length}ch` : (isMobile ? '10ch' : '43ch')
               }}
             />
             <span className="text-gray-500">{'}'}</span>

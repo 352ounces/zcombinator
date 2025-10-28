@@ -398,7 +398,7 @@ export function SwapContent() {
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC'] as Token[]).map((token) => (
                 <div key={token} className="bg-[#2B2B2A] rounded-lg p-3 flex items-center gap-3">
                   {getTokenIcon(token).startsWith('/') ? (
@@ -433,7 +433,10 @@ export function SwapContent() {
             <div className="flex justify-between mb-2">
               <label className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>You pay</label>
               <div className="flex items-center gap-1">
-                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Balance:</span>
+                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                  <span className="md:hidden">Bal:</span>
+                  <span className="hidden md:inline">Balance:</span>
+                </span>
                 {getTokenIcon(fromToken).startsWith('/') ? (
                   <img src={getTokenIcon(fromToken)} alt={fromToken} className="w-4 h-4 rounded-full object-cover" />
                 ) : (
@@ -541,7 +544,10 @@ export function SwapContent() {
             <div className="flex justify-between mb-2">
               <label className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>You receive</label>
               <div className="flex items-center gap-1">
-                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Balance:</span>
+                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                  <span className="md:hidden">Bal:</span>
+                  <span className="hidden md:inline">Balance:</span>
+                </span>
                 {getTokenIcon(toToken).startsWith('/') ? (
                   <img src={getTokenIcon(toToken)} alt={toToken} className="w-4 h-4 rounded-full object-cover" />
                 ) : (
@@ -779,7 +785,7 @@ export function SwapContent() {
               : isSwapping
               ? 'Swapping...'
               : wallet && amount && parseFloat(amount) > parseFloat(balances[fromToken])
-              ? 'Insufficient Balance'
+              ? <><span className="md:hidden">Insufficient Bal</span><span className="hidden md:inline">Insufficient Balance</span></>
               : 'Swap'}
           </button>
         </div>

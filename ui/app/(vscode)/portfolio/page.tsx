@@ -296,15 +296,37 @@ export default function PortfolioPage() {
     fetchPresales();
   }, [wallet, retryCount]);
 
-  const formatDate = (dateString: string) => {
+  const formatDate = (dateString: string, includeTime: boolean = true) => {
     const date = new Date(dateString);
-    return date.toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    if (includeTime) {
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    } else {
+      return date.toLocaleString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    }
+  };
+
+  const formatNumberShort = (value: number | string) => {
+    const num = typeof value === 'string' ? parseFloat(value) : value;
+    if (isNaN(num)) return '--';
+
+    if (num >= 1_000_000_000) {
+      return `${(num / 1_000_000_000).toFixed(2)}B`;
+    } else if (num >= 1_000_000) {
+      return `${(num / 1_000_000).toFixed(2)}M`;
+    } else if (num >= 1_000) {
+      return `${(num / 1_000).toFixed(2)}K`;
+    }
+    return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
   };
 
   const refreshTokenBalance = async (tokenAddress: string, delayMs: number = 0) => {
@@ -447,7 +469,10 @@ export default function PortfolioPage() {
               className="flex items-center gap-1 ml-2 hover:opacity-80 transition-opacity cursor-pointer"
               title="Copy wallet address"
             >
-              <span className="text-[14px] text-[#b2e9fe] font-mono" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+              <span className="text-[14px] text-[#b2e9fe] font-mono md:hidden" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                {wallet.toString().slice(0, 6)}
+              </span>
+              <span className="hidden md:inline text-[14px] text-[#b2e9fe] font-mono" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
                 {wallet.toString().slice(0, 6)}...{wallet.toString().slice(-6)}
               </span>
               {copiedWallet ? (
@@ -532,7 +557,7 @@ export default function PortfolioPage() {
                     <button
                       onClick={forceRefresh}
                       disabled={loading}
-                      className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="hidden md:block text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                       style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
                       title="Refresh data"
                     >
@@ -612,7 +637,8 @@ export default function PortfolioPage() {
                                   className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
                                   style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
                                 >
-                                  {presale.status === 'launched' ? '[View Vesting]' : '[View Presale]'}
+                                  <span className="md:hidden">{presale.status === 'launched' ? '[Vesting]' : '[Presale]'}</span>
+                                  <span className="hidden md:inline">{presale.status === 'launched' ? '[View Vesting]' : '[View Presale]'}</span>
                                 </button>
                               </div>
                             </div>
@@ -650,58 +676,118 @@ export default function PortfolioPage() {
                         </div>
 
                         <div className="flex-1">
-                          {/* Top Row */}
-                          <div className="flex items-baseline justify-between">
-                            <div className="flex items-baseline gap-4">
-                          <h3 className="text-[14px] text-white font-bold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                            {launch.token_symbol || 'N/A'}
-                          </h3>
-                          <div className="flex items-center gap-2">
-                            <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                              {launch.token_name || 'Unnamed Token'}
-                            </span>
-                            {launch.is_creator_designated && (
-                              <span className="px-1 py-0.5 text-xs font-medium bg-[#b2e9fe]/20 text-[#b2e9fe]" title="You're designated as a creator for this token">
-                                Designated
-                              </span>
-                            )}
-                            <button
-                              onClick={() => copyTokenAddress(launch.token_address)}
-                              className="inline-flex items-center justify-center text-gray-300 hover:text-white transition-colors cursor-pointer"
-                              title="Copy token address"
-                            >
-                              {copiedTokens.has(launch.token_address) ? (
-                                <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                </svg>
-                              ) : (
-                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                </svg>
-                              )}
-                            </button>
-                          </div>
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Balance:</span>
-                            <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                              {launch.userBalance === '--'
-                              ? '--'
-                              : parseFloat(launch.userBalance || '0').toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                            </span>
-                            {loadingBalances.has(launch.token_address) && (
-                              <div className="inline-flex items-center">
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                          {/* Desktop Layout */}
+                          <div className="hidden md:block">
+                            <div className="flex items-baseline justify-between">
+                              <div className="flex items-baseline gap-4">
+                                <h3 className="text-[14px] text-white font-bold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                                  {launch.token_symbol || 'N/A'}
+                                </h3>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                                    {launch.token_name || 'Unnamed Token'}
+                                  </span>
+                                  {launch.is_creator_designated && (
+                                    <span className="px-1 py-0.5 text-xs font-medium bg-[#b2e9fe]/20 text-[#b2e9fe]" title="You're designated as a creator for this token">
+                                      Designated
+                                    </span>
+                                  )}
+                                  <button
+                                    onClick={() => copyTokenAddress(launch.token_address)}
+                                    className="inline-flex items-center justify-center text-gray-300 hover:text-white transition-colors cursor-pointer"
+                                    title="Copy token address"
+                                  >
+                                    {copiedTokens.has(launch.token_address) ? (
+                                      <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                      </svg>
+                                    ) : (
+                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                      </svg>
+                                    )}
+                                  </button>
+                                </div>
+                                <div className="flex items-baseline gap-2">
+                                  <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Balance:</span>
+                                  <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                                    {launch.userBalance === '--'
+                                    ? '--'
+                                    : parseFloat(launch.userBalance || '0').toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                                  </span>
+                                  {loadingBalances.has(launch.token_address) && (
+                                    <div className="inline-flex items-center">
+                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
-                            )}
+                              <p className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                                Launched: {formatDate(launch.launch_time)}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                        <p className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                          Launched: {formatDate(launch.launch_time)}
-                        </p>
-                      </div>
 
-                      {/* Bottom Row */}
-                      <div className="flex items-center mt-0.5">
+                          {/* Mobile Layout */}
+                          <div className="md:hidden">
+                            {/* First Row: Symbol, Name, Copy icon, Designated badge */}
+                            <div className="flex items-center gap-2">
+                              <h3 className="text-[14px] text-white font-bold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                                {launch.token_symbol || 'N/A'}
+                              </h3>
+                              <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                                {launch.token_name || 'Unnamed Token'}
+                              </span>
+                              <button
+                                onClick={() => copyTokenAddress(launch.token_address)}
+                                className="inline-flex items-center justify-center text-gray-300 hover:text-white transition-colors cursor-pointer"
+                                title="Copy token address"
+                              >
+                                {copiedTokens.has(launch.token_address) ? (
+                                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                                  </svg>
+                                ) : (
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                                  </svg>
+                                )}
+                              </button>
+                              {launch.is_creator_designated && (
+                                <span className="px-1 py-0.5 text-xs font-medium bg-[#b2e9fe]/20 text-[#b2e9fe]" title="You're designated as a creator for this token">
+                                  Designated
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Second Row: Balance, Claim button */}
+                            <div className="flex items-center gap-4 mt-0.5">
+                              <div className="flex items-baseline gap-2">
+                                <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Bal:</span>
+                                <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                                  {launch.userBalance === '--'
+                                  ? '--'
+                                  : formatNumberShort(launch.userBalance || '0')}
+                                </span>
+                                {loadingBalances.has(launch.token_address) && (
+                                  <div className="inline-flex items-center">
+                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                                  </div>
+                                )}
+                              </div>
+                              <ClaimButton
+                                tokenAddress={launch.token_address}
+                                tokenSymbol={launch.token_symbol || 'TOKEN'}
+                                onSuccess={() => refreshTokenBalance(launch.token_address, 5000)}
+                                disabled={!launch.is_creator_designated && (launch.creator_twitter || launch.creator_github) ? true : false}
+                                disabledReason="Rewards designated"
+                                isMobile={true}
+                              />
+                            </div>
+                          </div>
+
+                      {/* Bottom Row - Desktop */}
+                      <div className="hidden md:flex items-center mt-0.5">
                         <div className="flex items-center gap-8">
                           <button
                             onClick={() => {
@@ -763,7 +849,65 @@ export default function PortfolioPage() {
                           />
                         </div>
                       </div>
+
+                      {/* Bottom Rows - Mobile */}
+                      <div className="md:hidden flex flex-col gap-2 mt-0.5">
+                        {/* First Row: Holders, History */}
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={() => {
+                              addTab('holders', launch.token_address, launch.token_symbol || 'Unknown', pathname);
+                              router.push(`/holders/${launch.token_address}`);
+                            }}
+                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
+                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                          >
+                            [Holders]
+                          </button>
+                          <button
+                            onClick={() => {
+                              addTab('history', launch.token_address, launch.token_symbol || 'Unknown', pathname);
+                              router.push(`/history/${launch.token_address}`);
+                            }}
+                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
+                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                          >
+                            [History]
+                          </button>
                         </div>
+
+                        {/* Second Row: Transfer, Sell, Burn */}
+                        <div className="flex items-center gap-4">
+                          <button
+                            onClick={() => {
+                              addTab('transfer', launch.token_address, launch.token_symbol || 'Unknown', pathname);
+                              router.push(`/transfer/${launch.token_address}`);
+                            }}
+                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
+                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                          >
+                            [Transfer]
+                          </button>
+                          <button
+                            onClick={() => window.open(`https://jup.ag/swap?sell=${launch.token_address}&buy=So11111111111111111111111111111111111111112`, '_blank')}
+                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
+                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                          >
+                            [Sell]
+                          </button>
+                          <button
+                            onClick={() => {
+                              addTab('burn', launch.token_address, launch.token_symbol || 'Unknown', pathname);
+                              router.push(`/burn/${launch.token_address}`);
+                            }}
+                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
+                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                          >
+                            [Burn]
+                          </button>
+                        </div>
+                      </div>
+                    </div>
                       </div>
                     </div>
                   ))}

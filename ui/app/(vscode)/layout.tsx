@@ -60,8 +60,7 @@ function VscodeLayoutContent({
 
       {/* Main Content */}
       <main
-        className="h-screen overflow-y-auto"
-        style={{ marginLeft: '300px' }}
+        className="h-screen overflow-y-auto ml-[40px] md:ml-[300px]"
       >
         <Header />
 
@@ -70,7 +69,7 @@ function VscodeLayoutContent({
           <LineNumbers lineCount={lineCount} />
 
           {/* Main Content Column */}
-          <div ref={contentRef} className="flex-1 px-8 py-12">
+          <div ref={contentRef} className="flex-1 px-4 md:px-8 py-12">
             {children}
           </div>
         </div>

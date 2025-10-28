@@ -162,6 +162,21 @@ export function HoldersContent({ tokenAddress, tokenSymbol = '' }: HoldersConten
     return `${address.slice(0, 6)}...${address.slice(-6)}`;
   };
 
+  const formatAddressMobile = (address: string) => {
+    return address.slice(0, 6);
+  };
+
+  const formatNumberShort = (value: number) => {
+    if (value >= 1_000_000_000) {
+      return `${(value / 1_000_000_000).toFixed(2)}B`;
+    } else if (value >= 1_000_000) {
+      return `${(value / 1_000_000).toFixed(2)}M`;
+    } else if (value >= 1_000) {
+      return `${(value / 1_000).toFixed(2)}K`;
+    }
+    return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  };
+
   const handleEditClick = (holder: Holder) => {
     setEditingHolder(holder.wallet_address);
     setEditForm({
@@ -252,7 +267,7 @@ export function HoldersContent({ tokenAddress, tokenSymbol = '' }: HoldersConten
         {/* Last sync and Sync button */}
         <div className="flex items-baseline gap-12 mb-1">
           {holderStats.lastSyncTime && (
-            <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+            <span className="hidden md:inline text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
               Last sync: {new Date(holderStats.lastSyncTime).toLocaleString()}
             </span>
           )}
@@ -274,9 +289,10 @@ export function HoldersContent({ tokenAddress, tokenSymbol = '' }: HoldersConten
         </div>
 
         {/* Total Holders and Filter */}
-        <div className="flex items-baseline gap-12 mb-6.5">
+        <div className="flex items-baseline gap-4 md:gap-12 mb-6.5">
           <div className="flex items-baseline gap-2">
-            <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Total Holders:</span>
+            <span className="md:hidden text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Holders:</span>
+            <span className="hidden md:inline text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Total Holders:</span>
             <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{holderStats.totalHolders}</span>
           </div>
           <div className="text-[14px]" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
@@ -284,14 +300,14 @@ export function HoldersContent({ tokenAddress, tokenSymbol = '' }: HoldersConten
             <span className="text-gray-500">{'{'}</span>
             <input
               type="text"
-              placeholder="wallet address or labels"
+              placeholder="wallet or label"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               autoComplete="off"
               className="bg-transparent border-0 focus:outline-none placeholder:text-gray-500 text-[#b2e9fe]"
               style={{
                 fontFamily: 'Monaco, Menlo, "Courier New", monospace',
-                width: searchQuery ? `${searchQuery.length}ch` : '24ch'
+                width: searchQuery ? `${searchQuery.length}ch` : '15ch'
               }}
             />
             <span className="text-gray-500">{'}'}</span>
@@ -307,11 +323,16 @@ export function HoldersContent({ tokenAddress, tokenSymbol = '' }: HoldersConten
                 <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
                   #{currentPage * holdersPerPage + index + 1}
                 </span>
-                <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                {/* Desktop wallet address */}
+                <span className="hidden md:inline text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
                   {formatAddress(holder.wallet_address)}
                 </span>
+                {/* Mobile wallet address */}
+                <span className="md:hidden text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                  {formatAddressMobile(holder.wallet_address)}
+                </span>
                 {wallet && holder.wallet_address === wallet.toBase58() && (
-                  <span className="text-[14px] text-[#b2e9fe] bg-[#b2e9fe]/10 px-1 py-0.5" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                  <span className="hidden md:inline text-[14px] text-[#b2e9fe] bg-[#b2e9fe]/10 px-1 py-0.5" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
                     You
                   </span>
                 )}
@@ -322,8 +343,13 @@ export function HoldersContent({ tokenAddress, tokenSymbol = '' }: HoldersConten
                 )}
               </div>
               <div className="flex items-center gap-4">
-                <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                {/* Desktop balance */}
+                <span className="hidden md:inline text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
                   {parseFloat(holder.token_balance).toLocaleString(undefined, { maximumFractionDigits: 2 })}
+                </span>
+                {/* Mobile balance */}
+                <span className="md:hidden text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+                  {formatNumberShort(parseFloat(holder.token_balance))}
                 </span>
                 <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
                   {holder.percentage?.toFixed(2)}%

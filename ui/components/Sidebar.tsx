@@ -6,14 +6,13 @@ import { FileExplorer } from './FileExplorer';
 export function Sidebar() {
   return (
     <aside
-      className="fixed left-0 top-0 h-screen overflow-hidden flex"
+      className="fixed left-0 top-0 h-screen overflow-hidden flex w-[40px] md:w-[300px]"
       style={{
-        width: '300px',
         borderRight: '1px solid #2B2B2B'
       }}
     >
       <ActivityBar />
-      <FileExplorer />
+      <FileExplorer className="hidden md:block" />
     </aside>
   );
 }

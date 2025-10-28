@@ -11,7 +11,7 @@ export default function LandingPage() {
           height={56}
           className="mr-2"
         />
-        Combinator
+        <span className="hidden md:inline">Combinator</span>
       </h1>
       <p className="mt-7 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}What is ZC?</p>
       <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Futarchy for product development</p>

@@ -2,12 +2,12 @@
 
 import { useState } from 'react';
 
-export function FileExplorer() {
+export function FileExplorer({ className }: { className?: string }) {
   const [isFileHovered, setIsFileHovered] = useState(false);
 
   return (
     <div
-      className="flex-1 overflow-y-auto"
+      className={`flex-1 overflow-y-auto ${className || ''}`}
       style={{
         backgroundColor: '#181818',
         fontFamily: 'Monaco, Menlo, "Courier New", monospace',

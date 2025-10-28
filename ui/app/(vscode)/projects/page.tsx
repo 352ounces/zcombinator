@@ -245,7 +245,8 @@ export default function ProjectsPage() {
         </button>
         <div className="flex items-baseline gap-2">
           <span className="text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-            {'//'}Cumulative Market Cap:
+            <span className="md:hidden">{'//'}Total MCap:</span>
+            <span className="hidden md:inline">{'//'}Cumulative Market Cap:</span>
           </span>
           <span className="text-[14px] font-semibold text-[#b2e9fe]" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
             {formatMarketCap(cumulativeMarketCap)}

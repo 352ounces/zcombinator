@@ -24,11 +24,12 @@ interface ClaimButtonProps {
   onSuccess?: () => void;
   disabled?: boolean;
   disabledReason?: string;
+  isMobile?: boolean;
 }
 
 type ClaimInfo = ClaimInfoResponse;
 
-export function ClaimButton({ tokenAddress, tokenSymbol, onSuccess, disabled = false, disabledReason }: ClaimButtonProps) {
+export function ClaimButton({ tokenAddress, tokenSymbol, onSuccess, disabled = false, disabledReason, isMobile = false }: ClaimButtonProps) {
   const { wallet, activeWallet } = useWallet();
   const { signTransaction } = useSignTransaction();
   const [claimInfo, setClaimInfo] = useState<ClaimInfo | null>(null);
@@ -74,6 +75,17 @@ export function ClaimButton({ tokenAddress, tokenSymbol, onSuccess, disabled = f
       return `${hours}h ${minutes}m`;
     }
     return `${minutes}m`;
+  };
+
+  const formatNumberShort = (value: number) => {
+    if (value >= 1_000_000_000) {
+      return `${(value / 1_000_000_000).toFixed(2)}B`;
+    } else if (value >= 1_000_000) {
+      return `${(value / 1_000_000).toFixed(2)}M`;
+    } else if (value >= 1_000) {
+      return `${(value / 1_000).toFixed(2)}K`;
+    }
+    return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
   };
 
   useEffect(() => {
@@ -276,7 +288,7 @@ export function ClaimButton({ tokenAddress, tokenSymbol, onSuccess, disabled = f
   if (!claimInfo) {
     return (
       <div className="text-[14px] text-red-400" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-        [Failed to load claim information]
+        {isMobile ? '[Failed]' : '[Failed to load claim information]'}
       </div>
     );
   }
@@ -305,6 +317,8 @@ export function ClaimButton({ tokenAddress, tokenSymbol, onSuccess, disabled = f
             ? '[Claiming...]'
             : availableToClaim <= 0
             ? '[All Tokens Claimed]'
+            : isMobile
+            ? `[Claim ${formatNumberShort(amountUserReceives)}]`
             : `[Claim ${amountUserReceives.toLocaleString()}]`
           }
         </button>
