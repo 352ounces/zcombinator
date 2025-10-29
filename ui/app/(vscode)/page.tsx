@@ -14,7 +14,7 @@ export default function LandingPage() {
         <span className="hidden md:inline">Combinator</span>
       </h1>
       <p className="mt-7 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}What is ZC?</p>
-      <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Futarchy for product development</p>
+      <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>A launchpad that helps founders hit PMF</p>
       <p className="mt-[26px] text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}Thesis</p>
       <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>The highest signal product feedback is a ready-to-merge PR made and selected by your users.</p>
       <p className="mt-[26px] text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}What problems are ZC solving for you as a founder?</p>
