@@ -1166,16 +1166,124 @@ router.post('/:tokenAddress/launch-confirm', async (req: Request, res: Response)
     }
     const baseMintKeypair = Keypair.fromSecretKey(bs58.decode(storedTx.baseMintKeypair));
 
+    // Initialize connection for validation
+    const connection = new Connection(RPC_URL, "confirmed");
+
     // Deserialize the signed transaction
     const transaction = Transaction.from(bs58.decode(signedTransaction));
+
+    // SECURITY: Validate transaction has recent blockhash to prevent replay attacks
+    if (!transaction.recentBlockhash) {
+      return res.status(400).json({ error: 'Invalid transaction: missing blockhash' });
+    }
+
+    // Check if blockhash is still valid (within last 150 slots ~60 seconds)
+    const isBlockhashValid = await connection.isBlockhashValid(
+      transaction.recentBlockhash,
+      { commitment: 'confirmed' }
+    );
+
+    if (!isBlockhashValid) {
+      return res.status(400).json({
+        error: 'Invalid transaction: blockhash is expired. Please create a new transaction.'
+      });
+    }
+
+    // CRITICAL SECURITY: Verify the transaction is cryptographically signed by the payer
+    const payerPubkey = new PublicKey(storedTx.payerPublicKey);
+    let validPayerSigner = false;
+
+    // Compile the transaction message for signature verification
+    const message = transaction.compileMessage();
+    const messageBytes = message.serialize();
+
+    // Find the payer's signer index
+    const payerSignerIndex = message.accountKeys.findIndex(key =>
+      key.equals(payerPubkey)
+    );
+
+    if (payerSignerIndex >= 0 && payerSignerIndex < transaction.signatures.length) {
+      const signature = transaction.signatures[payerSignerIndex];
+      if (signature.signature) {
+        // CRITICAL: Verify the signature is cryptographically valid using nacl
+        const isValid = nacl.sign.detached.verify(
+          messageBytes,
+          signature.signature,
+          payerPubkey.toBytes()
+        );
+        validPayerSigner = isValid;
+      }
+    }
+
+    if (!validPayerSigner) {
+      return res.status(400).json({
+        error: 'Invalid transaction: must be cryptographically signed by the payer'
+      });
+    }
+
+    // CRITICAL SECURITY: Validate transaction structure matches the original
+    // Deserialize the stored original transaction
+    const originalTransaction = Transaction.from(bs58.decode(storedTx.combinedTx));
+
+    // Validate instruction count matches
+    if (transaction.instructions.length !== originalTransaction.instructions.length) {
+      return res.status(400).json({
+        error: `Invalid transaction: instruction count mismatch. Expected ${originalTransaction.instructions.length}, got ${transaction.instructions.length}`
+      });
+    }
+
+    // Validate each instruction matches the original
+    for (let i = 0; i < transaction.instructions.length; i++) {
+      const userInstruction = transaction.instructions[i];
+      const originalInstruction = originalTransaction.instructions[i];
+
+      // Validate program ID matches
+      if (!userInstruction.programId.equals(originalInstruction.programId)) {
+        return res.status(400).json({
+          error: `Invalid transaction: instruction ${i} program mismatch`
+        });
+      }
+
+      // Validate instruction data matches
+      if (!userInstruction.data.equals(originalInstruction.data)) {
+        return res.status(400).json({
+          error: `Invalid transaction: instruction ${i} data mismatch`
+        });
+      }
+
+      // Validate account keys count matches
+      if (userInstruction.keys.length !== originalInstruction.keys.length) {
+        return res.status(400).json({
+          error: `Invalid transaction: instruction ${i} account count mismatch`
+        });
+      }
+
+      // Validate each account key matches
+      for (let j = 0; j < userInstruction.keys.length; j++) {
+        const userKey = userInstruction.keys[j];
+        const originalKey = originalInstruction.keys[j];
+
+        if (!userKey.pubkey.equals(originalKey.pubkey)) {
+          return res.status(400).json({
+            error: `Invalid transaction: instruction ${i} account ${j} pubkey mismatch`
+          });
+        }
+
+        if (userKey.isSigner !== originalKey.isSigner || userKey.isWritable !== originalKey.isWritable) {
+          return res.status(400).json({
+            error: `Invalid transaction: instruction ${i} account ${j} metadata mismatch`
+          });
+        }
+      }
+    }
+
+    console.log('✓ Transaction validation passed: structure matches original');
 
     // Add escrow and baseMint signatures
     transaction.partialSign(escrowKeypair);
     transaction.partialSign(baseMintKeypair);
 
     // Send the fully signed transaction
-    const connection = new Connection(RPC_URL, "confirmed");
-
     const signature = await connection.sendRawTransaction(
       transaction.serialize(),
       {
