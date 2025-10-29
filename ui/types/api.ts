@@ -26,8 +26,13 @@ export interface MintClaimResponse {
   success: true;
   transaction: string; // base58 encoded unsigned transaction
   transactionKey: string;
-  userTokenAccount: string;
   claimAmount: string;
+  splitRecipients: Array<{
+    wallet: string;
+    amount: string;
+    label?: string;
+  }>;
+  adminAmount: string;
   mintDecimals: number;
   message: string;
 }
@@ -42,8 +47,12 @@ export interface ConfirmClaimResponse {
   success: true;
   transactionSignature: string;
   tokenAddress: string;
-  userTokenAccount: string;
   claimAmount: string;
+  splitRecipients: Array<{
+    wallet: string;
+    amount: string;
+    label?: string;
+  }>;
   confirmation: any; // Solana confirmation object
 }
 
