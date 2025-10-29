@@ -76,12 +76,15 @@ result = response.json()
   The token address that was claimed from
 </ResponseField>
 
-<ResponseField name="userTokenAccount" type="string">
-  The user's associated token account that received the tokens
-</ResponseField>
-
 <ResponseField name="claimAmount" type="string">
   The amount of tokens that were successfully claimed
+</ResponseField>
+
+<ResponseField name="splitRecipients" type="array">
+  Array of recipients who received tokens from this claim, each containing:
+  - `wallet` (string): The recipient's wallet address
+  - `amount` (string): The amount allocated to this recipient
+  - `label` (string, optional): Description of the recipient (e.g., "Developer")
 </ResponseField>
 
 <ResponseField name="confirmation" type="object">
@@ -95,8 +98,14 @@ result = response.json()
   "success": true,
   "transactionSignature": "5VfYiDvQMBSWxKJLa9NLPQ1x3...",
   "tokenAddress": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
-  "userTokenAccount": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
   "claimAmount": "1000000",
+  "splitRecipients": [
+    {
+      "wallet": "9WzDXwBbmkg8ZTbNMqUxvQRAyrZzDsGYdLVL9zYtAWWM",
+      "amount": "900000",
+      "label": "Developer"
+    }
+  ],
   "confirmation": {
     "value": {
       "err": null
