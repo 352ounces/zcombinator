@@ -19,7 +19,7 @@
 import { Router, Request, Response } from 'express';
 import * as crypto from 'crypto';
 import nacl from 'tweetnacl';
-import { Connection, Keypair, Transaction, PublicKey } from '@solana/web3.js';
+import { Connection, Keypair, Transaction, PublicKey, ComputeBudgetProgram } from '@solana/web3.js';
 import {
   createAssociatedTokenAccountIdempotentInstruction,
   createMintToInstruction,
@@ -703,6 +703,10 @@ router.post('/confirm', async (
     );
     console.log("Successfully created adminTokenAccountAddress:", adminTokenAccountAddress.toBase58());
 
+    // Define safe program IDs that wallets may add for optimization
+    const COMPUTE_BUDGET_PROGRAM_ID = ComputeBudgetProgram.programId;
+    const LIGHTHOUSE_PROGRAM_ID = new PublicKey("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95");
+
     // CRITICAL SECURITY: Validate ONLY allowed instruction types are present
     // This prevents injection of malicious instructions that would receive protocol signature
     console.log("Validating transaction instruction types...");
@@ -710,8 +714,11 @@ router.post('/confirm', async (
       const instruction = transaction.instructions[i];
       const programId = instruction.programId;
 
-      // Only allow TOKEN_PROGRAM and ASSOCIATED_TOKEN_PROGRAM
-      if (!programId.equals(TOKEN_PROGRAM_ID) && !programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
+      // Allow safe programs: TOKEN_PROGRAM, ASSOCIATED_TOKEN_PROGRAM, ComputeBudget, and Lighthouse
+      if (!programId.equals(TOKEN_PROGRAM_ID) &&
+          !programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID) &&
+          !programId.equals(COMPUTE_BUDGET_PROGRAM_ID) &&
+          !programId.equals(LIGHTHOUSE_PROGRAM_ID)) {
         const errorResponse = {
           error: 'Invalid transaction: unauthorized program instruction detected',
           details: `Instruction ${i} uses unauthorized program: ${programId.toBase58()}`
@@ -829,6 +836,21 @@ router.post('/confirm', async (
         firstByte: instruction.data.length > 0 ? instruction.data[0] : undefined
       });
 
+      // Allow Compute Budget instructions (for priority fees and compute units)
+      if (instruction.programId.equals(COMPUTE_BUDGET_PROGRAM_ID)) {
+        continue;
+      }
+
+      // Allow ATA creation instructions (created by server in /claims/mint)
+      if (instruction.programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
+        continue;
+      }
+
+      // Allow Lighthouse instructions (for transaction optimization)
+      if (instruction.programId.equals(LIGHTHOUSE_PROGRAM_ID)) {
+        continue;
+      }
+
       // Check if this is a mintTo instruction (SPL Token program)
       if (instruction.programId.equals(TOKEN_PROGRAM_ID)) {
         // Parse mintTo instruction - first byte is instruction type (7 = mintTo)
@@ -898,7 +920,17 @@ router.post('/confirm', async (
             validatedRecipients.add(recipientKey);
             console.log("✓ Valid mint instruction found for recipient:", recipientKey);
           }
+        } else {
+          // SECURITY: Reject any TOKEN_PROGRAM instruction that is not mintTo (opcode 7)
+          const errorResponse = { error: 'Invalid transaction: contains unauthorized token program instructions' };
+          console.log("claim/confirm error response:", errorResponse);
+          return res.status(400).json(errorResponse);
         }
+      } else {
+        // SECURITY: Reject any unknown program instruction (defense-in-depth)
+        const errorResponse = { error: 'Invalid transaction: contains unexpected instructions' };
+        console.log("claim/confirm error response:", errorResponse);
+        return res.status(400).json(errorResponse);
       }
     }
 
