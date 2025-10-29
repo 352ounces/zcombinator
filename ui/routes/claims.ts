@@ -43,9 +43,7 @@ import {
   preRecordClaim,
   getTokenCreatorWallet,
   getDesignatedClaimByToken,
-  getVerifiedClaimWallets,
-  getEmissionSplits,
-  hasClaimRights
+  getVerifiedClaimWallets
 } from '../lib/db';
 import { calculateClaimEligibility } from '../lib/helius';
 import {
@@ -241,11 +239,17 @@ router.post('/mint', async (
         return res.status(403).json(errorResponse);
       }
     } else {
-      // Check for emission splits OR fall back to creator-only
-      const hasRights = await hasClaimRights(tokenAddress, userWallet);
-      if (!hasRights) {
-        const errorResponse = { error: 'You do not have claim rights for this token' };
-        console.log("claim/mint error response: User does not have claim rights");
+      // Normal token - only creator can claim
+      const creatorWallet = await getTokenCreatorWallet(tokenAddress);
+      if (!creatorWallet) {
+        const errorResponse = { error: 'Token creator not found' };
+        console.log("claim/mint error response:", errorResponse);
+        return res.status(400).json(errorResponse);
+      }
+
+      if (userWallet !== creatorWallet.trim()) {
+        const errorResponse = { error: 'Only the token creator can claim rewards' };
+        console.log("claim/mint error response: Non-creator attempting to claim");
         return res.status(403).json(errorResponse);
       }
     }
@@ -272,8 +276,16 @@ router.post('/mint', async (
       return res.status(400).json(errorResponse);
     }
 
-    // Query emission splits to determine distribution
-    const emissionSplits = await getEmissionSplits(tokenAddress);
+    // Hardcoded emission splits - supports N participants
+    // Currently configured for 2 participants: Developer (90%) + Admin fee (10%)
+
+    // Get the creator wallet (developer)
+    const creatorWallet = await getTokenCreatorWallet(tokenAddress);
+    if (!creatorWallet) {
+      const errorResponse = { error: 'Token creator not found' };
+      console.log("claim/mint error response:", errorResponse);
+      return res.status(400).json(errorResponse);
+    }
 
     // Calculate split amounts and prepare recipients
     interface SplitRecipient {
@@ -283,43 +295,19 @@ router.post('/mint', async (
       label?: string;
     }
 
-    const splitRecipients: SplitRecipient[] = [];
-
-    if (emissionSplits.length > 0) {
-      // Distribute according to configured splits
-      console.log(`Found ${emissionSplits.length} emission splits for token ${tokenAddress}`);
-
-      for (const split of emissionSplits) {
-        const splitAmount = (claimersTotal * BigInt(Math.floor(split.split_percentage * 100))) / BigInt(10000);
-        const splitAmountWithDecimals = splitAmount * BigInt(10 ** decimals);
-
-        splitRecipients.push({
-          wallet: split.recipient_wallet,
-          amount: splitAmount,
-          amountWithDecimals: splitAmountWithDecimals,
-          label: split.label || undefined
-        });
-
-        console.log(`Split: ${split.split_percentage}% to ${split.recipient_wallet}${split.label ? ` (${split.label})` : ''}`);
-      }
-    } else {
-      // No splits configured - fall back to 100% to creator
-      const creatorWallet = await getTokenCreatorWallet(tokenAddress);
-      if (!creatorWallet) {
-        const errorResponse = { error: 'Token creator not found' };
-        console.log("claim/mint error response:", errorResponse);
-        return res.status(400).json(errorResponse);
-      }
-
-      splitRecipients.push({
+    // Hardcoded split configuration
+    // claimersTotal represents the 90% portion for claimers (excluding 10% admin fee)
+    // For now: 100% of claimersTotal goes to the developer/creator
+    const splitRecipients: SplitRecipient[] = [
+      {
         wallet: creatorWallet.trim(),
-        amount: claimersTotal,
+        amount: claimersTotal, // 100% of the 90% claimers portion = 90% total
         amountWithDecimals: claimersTotal * BigInt(10 ** decimals),
-        label: 'Creator'
-      });
+        label: 'Developer'
+      }
+    ];
 
-      console.log(`No emission splits found - 100% to creator ${creatorWallet}`);
-    }
+    console.log(`Hardcoded emission split: 100% of claimers portion (90% total) to creator ${creatorWallet}`)
 
     // Get admin token account address
     const adminTokenAccount = await getAssociatedTokenAddress(
@@ -588,17 +576,23 @@ router.post('/confirm', async (
         return res.status(403).json(errorResponse);
       }
     } else {
-      // Normal token - check if user has claim rights (via emission splits or creator status)
-      const hasRights = await hasClaimRights(claimData.tokenAddress, claimData.userWallet);
+      // Normal token - only creator can claim
+      const rawCreatorWallet = await getTokenCreatorWallet(claimData.tokenAddress);
+      if (!rawCreatorWallet) {
+        const errorResponse = { error: 'Token creator not found' };
+        console.log("claim/confirm error response:", errorResponse);
+        return res.status(400).json(errorResponse);
+      }
 
-      if (!hasRights) {
-        const errorResponse = { error: 'You do not have claim rights for this token' };
-        console.log("claim/confirm error response: User does not have claim rights");
+      const creatorWallet = rawCreatorWallet.trim();
+      if (claimData.userWallet !== creatorWallet) {
+        const errorResponse = { error: 'Only the token creator can claim rewards' };
+        console.log("claim/confirm error response: Non-creator attempting to claim");
         return res.status(403).json(errorResponse);
       }
 
       authorizedClaimWallet = claimData.userWallet;
-      console.log("User has claim rights (via emission splits or creator status):", claimData.userWallet);
+      console.log("User is the token creator:", claimData.userWallet);
     }
 
     // At this point, authorizedClaimWallet is set to the wallet allowed to claim
