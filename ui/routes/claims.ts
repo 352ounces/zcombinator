@@ -287,6 +287,21 @@ router.post('/mint', async (
       return res.status(400).json(errorResponse);
     }
 
+    // Validate creator wallet address before using as split recipient
+    const trimmedCreatorWallet = creatorWallet.trim();
+    try {
+      const creatorPubkey = new PublicKey(trimmedCreatorWallet);
+      if (!PublicKey.isOnCurve(creatorPubkey.toBuffer())) {
+        const errorResponse = { error: 'Invalid creator wallet address: not on curve' };
+        console.log("claim/mint error response:", errorResponse);
+        return res.status(400).json(errorResponse);
+      }
+    } catch (error) {
+      const errorResponse = { error: 'Invalid creator wallet address format' };
+      console.log("claim/mint error response:", errorResponse);
+      return res.status(400).json(errorResponse);
+    }
+
     // Calculate split amounts and prepare recipients
     interface SplitRecipient {
       wallet: string;
@@ -300,14 +315,14 @@ router.post('/mint', async (
     // For now: 100% of claimersTotal goes to the developer/creator
     const splitRecipients: SplitRecipient[] = [
       {
-        wallet: creatorWallet.trim(),
+        wallet: trimmedCreatorWallet,
         amount: claimersTotal, // 100% of the 90% claimers portion = 90% total
         amountWithDecimals: claimersTotal * BigInt(10 ** decimals),
         label: 'Developer'
       }
     ];
 
-    console.log(`Hardcoded emission split: 100% of claimers portion (90% total) to creator ${creatorWallet}`)
+    console.log(`Hardcoded emission split: 100% of claimers portion (90% total) to creator ${trimmedCreatorWallet}`)
 
     // Get admin token account address
     const adminTokenAccount = await getAssociatedTokenAddress(
