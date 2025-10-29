@@ -312,17 +312,44 @@ router.post('/mint', async (
 
     // Hardcoded split configuration
     // claimersTotal represents the 90% portion for claimers (excluding 10% admin fee)
-    // For now: 100% of claimersTotal goes to the developer/creator
-    const splitRecipients: SplitRecipient[] = [
-      {
+    const splitRecipients: SplitRecipient[] = [];
+
+    // Special case for ZC token: split claimersTotal 50/50 between dev and Percent Markets treasury
+    const ZC_TOKEN_ADDRESS = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
+    const PERCENT_TREASURY_ADDRESS = '4ySrS3XEn8ouZfA2JAgS9uZ5BWeVCyyR16wgJ1Tyh9aG'; // Treasury for percent markets ($PERC) for their contributions to improving the protocol
+
+    if (tokenAddress === ZC_TOKEN_ADDRESS) {
+      // Split 90% claimers portion: 50% to dev, 50% to Percent Markets treasury
+      const devAmount = claimersTotal / BigInt(2);
+      const treasuryAmount = claimersTotal - devAmount; // Ensures total equals exactly claimersTotal
+
+      splitRecipients.push(
+        {
+          wallet: trimmedCreatorWallet,
+          amount: devAmount, // 50% of the 90% claimers portion = 45% total
+          amountWithDecimals: devAmount * BigInt(10 ** decimals),
+          label: 'Developer'
+        },
+        {
+          wallet: PERCENT_TREASURY_ADDRESS,
+          amount: treasuryAmount, // 50% of the 90% claimers portion = 45% total
+          amountWithDecimals: treasuryAmount * BigInt(10 ** decimals),
+          label: 'Percent Markets Treasury'
+        }
+      );
+
+      console.log(`ZC token emission split: 45% to developer ${trimmedCreatorWallet}, 45% to Percent Markets treasury ${PERCENT_TREASURY_ADDRESS}, 10% to fee`);
+    } else {
+      // Default: 100% of claimersTotal goes to the developer/creator
+      splitRecipients.push({
         wallet: trimmedCreatorWallet,
         amount: claimersTotal, // 100% of the 90% claimers portion = 90% total
         amountWithDecimals: claimersTotal * BigInt(10 ** decimals),
         label: 'Developer'
-      }
-    ];
+      });
 
-    console.log(`Hardcoded emission split: 100% of claimers portion (90% total) to creator ${trimmedCreatorWallet}`)
+      console.log(`Hardcoded emission split: 100% of claimers portion (90% total) to creator ${trimmedCreatorWallet}`);
+    }
 
     // Get admin token account address
     const adminTokenAccount = await getAssociatedTokenAddress(
