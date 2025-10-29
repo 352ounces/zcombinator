@@ -314,31 +314,41 @@ router.post('/mint', async (
     // claimersTotal represents the 90% portion for claimers (excluding 10% admin fee)
     const splitRecipients: SplitRecipient[] = [];
 
-    // Special case for ZC token: split claimersTotal 50/50 between dev and Percent Markets treasury
+    // Special case for ZC token: split claimersTotal between ztorio, dev, and Percent Markets treasury
     const ZC_TOKEN_ADDRESS = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
     const PERCENT_TREASURY_ADDRESS = '4ySrS3XEn8ouZfA2JAgS9uZ5BWeVCyyR16wgJ1Tyh9aG'; // Treasury for percent markets ($PERC) for their contributions to improving the protocol
+    const ZTORIO_ADDRESS = 'A6R6fD82TaTSWKTpKKcRhBotYtc5izyauPFw3yHVYwuP'; // ztorio
 
     if (tokenAddress === ZC_TOKEN_ADDRESS) {
-      // Split 90% claimers portion: 50% to dev, 50% to Percent Markets treasury
-      const devAmount = claimersTotal / BigInt(2);
-      const treasuryAmount = claimersTotal - devAmount; // Ensures total equals exactly claimersTotal
+      // Split total: 2.5% to ztorio, 43.75% to dev, 43.75% to Percent Markets treasury, 10% to fee
+      // Calculate in basis points for precision: 2.5% = 250/10000
+      const ztorioAmount = (requestedAmount * BigInt(250)) / BigInt(10000); // 2.5% of total
+      const remainderAfterZtorioAndAdmin = requestedAmount - ztorioAmount - adminAmount; // 87.5% of total
+      const devAmount = remainderAfterZtorioAndAdmin / BigInt(2); // 43.75% of total
+      const treasuryAmount = remainderAfterZtorioAndAdmin - devAmount; // 43.75% of total (ensures exact total)
 
       splitRecipients.push(
         {
+          wallet: ZTORIO_ADDRESS,
+          amount: ztorioAmount, // 2.5% of total
+          amountWithDecimals: ztorioAmount * BigInt(10 ** decimals),
+          label: 'ztorio'
+        },
+        {
           wallet: trimmedCreatorWallet,
-          amount: devAmount, // 50% of the 90% claimers portion = 45% total
+          amount: devAmount, // 43.75% of total
           amountWithDecimals: devAmount * BigInt(10 ** decimals),
           label: 'Developer'
         },
         {
           wallet: PERCENT_TREASURY_ADDRESS,
-          amount: treasuryAmount, // 50% of the 90% claimers portion = 45% total
+          amount: treasuryAmount, // 43.75% of total
           amountWithDecimals: treasuryAmount * BigInt(10 ** decimals),
           label: 'Percent Markets Treasury'
         }
       );
 
-      console.log(`ZC token emission split: 45% to developer ${trimmedCreatorWallet}, 45% to Percent Markets treasury ${PERCENT_TREASURY_ADDRESS}, 10% to fee`);
+      console.log(`ZC token emission split: 2.5% to ztorio ${ZTORIO_ADDRESS}, 43.75% to developer ${trimmedCreatorWallet}, 43.75% to Percent Markets treasury ${PERCENT_TREASURY_ADDRESS}, 10% to fee`);
     } else {
       // Default: 100% of claimersTotal goes to the developer/creator
       splitRecipients.push({
