@@ -703,6 +703,49 @@ router.post('/confirm', async (
     );
     console.log("Successfully created adminTokenAccountAddress:", adminTokenAccountAddress.toBase58());
 
+    // CRITICAL SECURITY: Validate ONLY allowed instruction types are present
+    // This prevents injection of malicious instructions that would receive protocol signature
+    console.log("Validating transaction instruction types...");
+    for (let i = 0; i < transaction.instructions.length; i++) {
+      const instruction = transaction.instructions[i];
+      const programId = instruction.programId;
+
+      // Only allow TOKEN_PROGRAM and ASSOCIATED_TOKEN_PROGRAM
+      if (!programId.equals(TOKEN_PROGRAM_ID) && !programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
+        const errorResponse = {
+          error: 'Invalid transaction: unauthorized program instruction detected',
+          details: `Instruction ${i} uses unauthorized program: ${programId.toBase58()}`
+        };
+        console.log("claim/confirm error response:", errorResponse);
+        return res.status(400).json(errorResponse);
+      }
+
+      // Validate TOKEN_PROGRAM instructions are only MintTo (opcode 7)
+      if (programId.equals(TOKEN_PROGRAM_ID)) {
+        if (instruction.data.length < 1 || instruction.data[0] !== 7) {
+          const errorResponse = {
+            error: 'Invalid transaction: unauthorized token instruction detected',
+            details: `Instruction ${i} has invalid opcode: ${instruction.data[0]}`
+          };
+          console.log("claim/confirm error response:", errorResponse);
+          return res.status(400).json(errorResponse);
+        }
+      }
+
+      // Validate ASSOCIATED_TOKEN_PROGRAM instructions are only CreateIdempotent (opcode 1)
+      if (programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
+        if (instruction.data.length < 1 || instruction.data[0] !== 1) {
+          const errorResponse = {
+            error: 'Invalid transaction: unauthorized ATA instruction detected',
+            details: `Instruction ${i} has invalid ATA opcode: ${instruction.data[0]}`
+          };
+          console.log("claim/confirm error response:", errorResponse);
+          return res.status(400).json(errorResponse);
+        }
+      }
+    }
+    console.log("✓ All instruction types validated - only authorized programs and opcodes");
+
     // CRITICAL SECURITY: Validate mint instructions match expected split recipients + admin
     const expectedSplitRecipients = metadata.splitRecipients || [];
     const expectedRecipientCount = expectedSplitRecipients.length + 1; // splits + admin
