@@ -709,12 +709,17 @@ router.post('/confirm', async (
     );
     console.log("Successfully created adminTokenAccountAddress:", adminTokenAccountAddress.toBase58());
 
-    // CRITICAL SECURITY: Validate that the transaction has exactly TWO mint instructions with correct amounts
+    // CRITICAL SECURITY: Validate mint instructions match expected split recipients + admin
+    const expectedSplitRecipients = metadata.splitRecipients || [];
+    const expectedRecipientCount = expectedSplitRecipients.length + 1; // splits + admin
     let mintInstructionCount = 0;
-    let validDeveloperMint = false;
-    let validAdminMint = false;
 
     console.log("Validating transaction with", transaction.instructions.length, "instructions");
+    console.log("Expected recipients:", {
+      splitRecipients: expectedSplitRecipients.length,
+      admin: 1,
+      total: expectedRecipientCount
+    });
 
     // First pass: count mint instructions
     for (const instruction of transaction.instructions) {
@@ -725,38 +730,59 @@ router.post('/confirm', async (
       }
     }
 
-    // Reject if not exactly TWO mint instructions
+    // Validate correct number of mint instructions
     if (mintInstructionCount === 0) {
       const errorResponse = { error: 'Invalid transaction: no mint instructions found' };
       console.log("claim/confirm error response:", errorResponse);
       return res.status(400).json(errorResponse);
     }
 
-    if (mintInstructionCount === 1) {
-      const errorResponse = { error: 'Invalid transaction: missing admin mint instruction' };
-      console.log("claim/confirm error response:", errorResponse);
-      return res.status(400).json(errorResponse);
-    }
-
-    if (mintInstructionCount > 2) {
-      const errorResponse = { error: 'Invalid transaction: only two mint instructions allowed (developer + admin)' };
+    if (mintInstructionCount !== expectedRecipientCount) {
+      const errorResponse = {
+        error: `Invalid transaction: expected ${expectedRecipientCount} mint instructions (${expectedSplitRecipients.length} recipients + 1 admin), found ${mintInstructionCount}`
+      };
       console.log("claim/confirm error response:", errorResponse);
       return res.status(400).json(errorResponse);
     }
 
     // Get the token decimals to convert claim amounts to base units
     const mintInfo = await getMint(connection, mintPublicKey);
-    const expectedDeveloperAmountWithDecimals = BigInt(metadata.developerAmount) * BigInt(10 ** mintInfo.decimals);
     const expectedAdminAmountWithDecimals = BigInt(metadata.adminAmount) * BigInt(10 ** mintInfo.decimals);
 
-    console.log("Expected amounts:", {
-      developerAmount: metadata.developerAmount,
-      adminAmount: metadata.adminAmount,
-      developerAmountWithDecimals: expectedDeveloperAmountWithDecimals.toString(),
-      adminAmountWithDecimals: expectedAdminAmountWithDecimals.toString()
+    // Create expected recipient map with token account addresses and amounts
+    const expectedRecipients = new Map<string, bigint>();
+
+    // Add all split recipients
+    for (const recipient of expectedSplitRecipients) {
+      const recipientPublicKey = new PublicKey(recipient.wallet);
+      const recipientTokenAccount = await getAssociatedTokenAddress(
+        mintPublicKey,
+        recipientPublicKey
+      );
+      const expectedAmount = BigInt(recipient.amount) * BigInt(10 ** mintInfo.decimals);
+      expectedRecipients.set(recipientTokenAccount.toBase58(), expectedAmount);
+    }
+
+    // Add admin recipient
+    expectedRecipients.set(adminTokenAccountAddress.toBase58(), expectedAdminAmountWithDecimals);
+
+    console.log("Expected recipients with amounts:", {
+      splitRecipients: expectedSplitRecipients.map((r: any) => ({
+        wallet: r.wallet,
+        amount: r.amount,
+        amountWithDecimals: (BigInt(r.amount) * BigInt(10 ** mintInfo.decimals)).toString()
+      })),
+      admin: {
+        wallet: ADMIN_WALLET,
+        amount: metadata.adminAmount,
+        amountWithDecimals: expectedAdminAmountWithDecimals.toString()
+      }
     });
 
-    // Second pass: validate BOTH mint instructions
+    // Track which recipients have been validated
+    const validatedRecipients = new Set<string>();
+
+    // Second pass: validate ALL mint instructions match expected recipients
     for (let i = 0; i < transaction.instructions.length; i++) {
       const instruction = transaction.instructions[i];
       console.log(`Instruction ${i}:`, {
@@ -792,52 +818,66 @@ router.post('/confirm', async (
               authorityMatches: mintAuthority.equals(protocolKeypair.publicKey)
             });
 
-            // CRITICAL SECURITY: Check if this is the developer mint instruction
-            if (mintAccount.equals(mintPublicKey) &&
-                recipientAccount.equals(authorizedTokenAccountAddress) &&
-                mintAuthority.equals(protocolKeypair.publicKey) &&
-                mintAmount === expectedDeveloperAmountWithDecimals) {
-              validDeveloperMint = true;
-              console.log("✓ Valid developer mint instruction found");
-            }
-            // CRITICAL SECURITY: Check if this is the admin mint instruction
-            else if (mintAccount.equals(mintPublicKey) &&
-                     recipientAccount.equals(adminTokenAccountAddress) &&
-                     mintAuthority.equals(protocolKeypair.publicKey) &&
-                     mintAmount === expectedAdminAmountWithDecimals) {
-              validAdminMint = true;
-              console.log("✓ Valid admin mint instruction found");
-            }
-            // SECURITY: Reject any mint instruction that doesn't match expected parameters
-            else {
-              const errorResponse = { error: 'Invalid transaction: mint instruction contains invalid parameters' };
+            // CRITICAL SECURITY: Validate mint account is correct
+            if (!mintAccount.equals(mintPublicKey)) {
+              const errorResponse = { error: 'Invalid transaction: mint instruction has wrong token mint' };
               console.log("claim/confirm error response:", errorResponse);
-              console.log("Rejected mint instruction:", {
-                recipientMatches: recipientAccount.equals(authorizedTokenAccountAddress) || recipientAccount.equals(adminTokenAccountAddress),
-                amountMatches: mintAmount === expectedDeveloperAmountWithDecimals || mintAmount === expectedAdminAmountWithDecimals,
-                mintAmount: mintAmount.toString(),
-                expectedDeveloper: expectedDeveloperAmountWithDecimals.toString(),
-                expectedAdmin: expectedAdminAmountWithDecimals.toString()
+              return res.status(400).json(errorResponse);
+            }
+
+            // CRITICAL SECURITY: Validate mint authority is protocol keypair
+            if (!mintAuthority.equals(protocolKeypair.publicKey)) {
+              const errorResponse = { error: 'Invalid transaction: mint authority must be protocol wallet' };
+              console.log("claim/confirm error response:", errorResponse);
+              return res.status(400).json(errorResponse);
+            }
+
+            // CRITICAL SECURITY: Validate recipient and amount match expected
+            const recipientKey = recipientAccount.toBase58();
+            const expectedAmount = expectedRecipients.get(recipientKey);
+
+            if (expectedAmount === undefined) {
+              const errorResponse = { error: 'Invalid transaction: mint instruction has unauthorized recipient' };
+              console.log("claim/confirm error response:", errorResponse);
+              console.log("Unauthorized recipient:", {
+                recipientAccount: recipientKey,
+                expectedRecipients: Array.from(expectedRecipients.keys())
               });
               return res.status(400).json(errorResponse);
             }
+
+            if (mintAmount !== expectedAmount) {
+              const errorResponse = { error: 'Invalid transaction: mint instruction has incorrect amount' };
+              console.log("claim/confirm error response:", errorResponse);
+              console.log("Amount mismatch:", {
+                recipientAccount: recipientKey,
+                actualAmount: mintAmount.toString(),
+                expectedAmount: expectedAmount.toString()
+              });
+              return res.status(400).json(errorResponse);
+            }
+
+            // Mark this recipient as validated
+            validatedRecipients.add(recipientKey);
+            console.log("✓ Valid mint instruction found for recipient:", recipientKey);
           }
         }
       }
     }
 
-    // CRITICAL SECURITY: Ensure BOTH mint instructions were found and valid
-    if (!validDeveloperMint) {
-      const errorResponse = { error: `Invalid transaction: developer mint instruction missing or invalid` };
+    // CRITICAL SECURITY: Ensure ALL expected recipients were validated
+    if (validatedRecipients.size !== expectedRecipients.size) {
+      const errorResponse = { error: 'Invalid transaction: missing mint instructions for some recipients' };
       console.log("claim/confirm error response:", errorResponse);
+      console.log("Validation incomplete:", {
+        validated: validatedRecipients.size,
+        expected: expectedRecipients.size,
+        missing: Array.from(expectedRecipients.keys()).filter(k => !validatedRecipients.has(k))
+      });
       return res.status(400).json(errorResponse);
     }
 
-    if (!validAdminMint) {
-      const errorResponse = { error: `Invalid transaction: admin mint instruction missing or invalid` };
-      console.log("claim/confirm error response:", errorResponse);
-      return res.status(400).json(errorResponse);
-    }
+    console.log("✓ All mint instructions validated successfully");
 
     // Add protocol signature (mint authority)
     transaction.partialSign(protocolKeypair);
