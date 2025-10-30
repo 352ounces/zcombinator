@@ -38,7 +38,7 @@ export function LaunchContent() {
     creatorGithub: '',
     presale: false,
     presaleTokens: [''],
-    quoteToken: 'SOL' as 'SOL' | 'ZC'
+    quoteToken: 'ZC' as 'SOL' | 'ZC'
   });
 
   const [isLaunching, setIsLaunching] = useState(false);
