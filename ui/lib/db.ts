@@ -48,9 +48,32 @@ export type {
   PresaleClaimTransaction,
 } from './db/types';
 
+// Mock database support
+import { shouldUseMockData, getMockDatabase } from './mock';
+
 let pool: Pool | null = null;
+let mockDb: ReturnType<typeof getMockDatabase> | null = null;
+
+// Check if we should use mock data
+function useMockData(): boolean {
+  return shouldUseMockData();
+}
+
+// Get mock database instance
+function getMockDb() {
+  if (!mockDb) {
+    mockDb = getMockDatabase();
+  }
+  return mockDb;
+}
 
 export function getPool(): Pool {
+  // If in mock mode, return a dummy pool (won't actually be used)
+  if (useMockData()) {
+    // Return a dummy pool object to prevent errors
+    return {} as Pool;
+  }
+
   if (!pool) {
     const dbUrl = process.env.DB_URL;
 
@@ -75,6 +98,11 @@ export function getPool(): Pool {
 
 
 export async function recordTokenLaunch(launch: Omit<TokenLaunch, 'id' | 'created_at' | 'launch_time'>): Promise<TokenLaunch> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().recordTokenLaunch(launch);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -123,6 +151,11 @@ export async function recordTokenLaunch(launch: Omit<TokenLaunch, 'id' | 'create
 }
 
 export async function getTokenLaunches(creatorWallet?: string, limit = 100): Promise<TokenLaunch[]> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getTokenLaunches(creatorWallet, limit);
+  }
+
   const pool = getPool();
 
   let query = `
@@ -152,6 +185,11 @@ export async function getTokenLaunches(creatorWallet?: string, limit = 100): Pro
 }
 
 export async function getTokenLaunchByAddress(tokenAddress: string): Promise<TokenLaunch | null> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getTokenLaunchByAddress(tokenAddress);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -169,6 +207,11 @@ export async function getTokenLaunchByAddress(tokenAddress: string): Promise<Tok
 }
 
 export async function getTokenLaunchesBySocials(twitterUsername?: string, githubUrl?: string, limit = 100): Promise<TokenLaunch[]> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getTokenLaunchesBySocials(twitterUsername, githubUrl, limit);
+  }
+
   const pool = getPool();
 
   if (!twitterUsername && !githubUrl) {
@@ -867,6 +910,11 @@ export async function removeFailedClaim(claimId: string): Promise<void> {
 // Token Holders Management Functions
 
 export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder[]> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getTokenHolders(tokenAddress);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -885,6 +933,11 @@ export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder
 }
 
 export async function upsertTokenHolder(holder: Omit<TokenHolder, 'id' | 'created_at' | 'updated_at'>): Promise<TokenHolder> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().upsertTokenHolder(holder);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -934,6 +987,11 @@ export async function batchUpsertTokenHolders(
   }>
 ): Promise<void> {
   if (holders.length === 0) return;
+
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().batchUpsertTokenHolders(tokenAddress, holders);
+  }
 
   const pool = getPool();
   const client = await pool.connect();
@@ -997,6 +1055,11 @@ export async function updateTokenHolderLabels(
     custom_label?: string | null;
   }
 ): Promise<TokenHolder | null> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().updateTokenHolderLabels(tokenAddress, walletAddress, labels);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -1032,6 +1095,11 @@ export async function getTokenHolderStats(tokenAddress: string): Promise<{
   totalBalance: string;
   lastSyncTime: Date | null;
 }> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getTokenHolderStats(tokenAddress);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -1383,6 +1451,10 @@ export async function createPresale(presale: Omit<Presale, 'id' | 'created_at' |
 }
 
 export async function getPresaleByTokenAddress(tokenAddress: string): Promise<Presale | null> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getPresaleByTokenAddress(tokenAddress);
+  }
   return presalesModule.getPresaleByTokenAddress(getPool(), tokenAddress);
 }
 
@@ -1396,6 +1468,13 @@ export async function updatePresaleStatus(
 }
 
 export async function getPresalesByCreatorWallet(creatorWallet: string, limit = 100): Promise<Presale[]> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    // Filter mock presales by creator wallet
+    const { MOCK_PRESALES } = await import('./mock/mockData');
+    return MOCK_PRESALES.filter(p => p.creator_wallet === creatorWallet).slice(0, limit);
+  }
+
   return presalesModule.getPresalesByCreatorWallet(getPool(), creatorWallet, limit);
 }
 
@@ -1408,6 +1487,10 @@ export async function getPresaleBidBySignature(transactionSignature: string): Pr
 }
 
 export async function getPresaleBids(tokenAddress: string): Promise<PresaleBid[]> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getPresaleBids(tokenAddress);
+  }
   return presalesModule.getPresaleBids(getPool(), tokenAddress);
 }
 
@@ -1415,6 +1498,10 @@ export async function getTotalPresaleBids(tokenAddress: string): Promise<{
   totalBids: number;
   totalAmount: bigint;
 }> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getTotalPresaleBids(tokenAddress);
+  }
   return presalesModule.getTotalPresaleBids(getPool(), tokenAddress);
 }
 
@@ -1422,6 +1509,10 @@ export async function getUserPresaleContribution(
   tokenAddress: string,
   walletAddress: string
 ): Promise<bigint> {
+  // Use mock database if enabled
+  if (useMockData()) {
+    return getMockDb().getUserPresaleContribution(tokenAddress, walletAddress);
+  }
   return presalesModule.getUserPresaleContribution(getPool(), tokenAddress, walletAddress);
 }
 
