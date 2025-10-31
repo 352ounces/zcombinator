@@ -168,8 +168,6 @@ Unlike traditional markets, we **highly encourage**:
 - Promoting your work to create liquidity
 - "Manipulating" markets in your favor
 
-**Why?** Attempts to manipulate make information markets stronger. If you try to inflate your PR's value artificially, sophisticated traders will dump on you, profit, and buyback the token. This creates a self-balancing system.
-
 ### Resolution Process
 
 **If you disagree with the outcome:**
@@ -181,15 +179,6 @@ Unlike traditional markets, we **highly encourage**:
 **Maintainer override:**
 - Only for security issues, legal concerns, or critical bugs
 - Otherwise, markets are final
-
-### Market Wisdom
-
-**Markets aggregate collective intelligence.**
-
-If you're consistently "right" and markets are "wrong," you'll profit by:
-1. Trading against the market (buy low, sell high)
-2. Building reputation over time
-3. Earning more on future contributions
 
 ---
 

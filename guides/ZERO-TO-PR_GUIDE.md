@@ -59,9 +59,7 @@ Claude Code will handle the git commands for you.
 **After cloning, open the codebase:**
 1. Check the Claude Code output—it will show you the path where it cloned the repo (e.g., `/Users/yourname/zcombinator`)
 2. In VS Code, go to **File > Open Folder** (or **File > Open** on Mac)
-3. Navigate to that path. Common locations:
-   - Mac: `/Users/yourname/zcombinator`
-   - Windows: `C:\Users\yourname\zcombinator`
+3. Navigate to that path.
    - If you can't find it, prompt Claude Code: "Where did you clone the zcombinator repo?"
 4. Select the `zcombinator` folder and click **Open**
 5. The codebase is now loaded in VS Code—you'll see all the files in the left sidebar
@@ -135,13 +133,6 @@ Once your PR is submitted, notify the ZC and/or Percent team to spin up a decisi
 - The team will review and potentially create a market for your contribution
 
 This step will be automated in the future.
-
-## Tips
-
-- **Be specific** in your prompts; the more detail, the better
-- **Ask Claude Code** if you're stuck: "Help me understand what went wrong"
-- **Review changes** before creating the PR: "Show me what files you changed"
-- **Test locally** if applicable: "How do I test these changes?"
 
 ## Common Issues
 
