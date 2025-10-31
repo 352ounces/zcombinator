@@ -61,16 +61,6 @@ https://intelligent-sense-d85.notion.site/29bbd0c5f00680cd891dc3766e6f5aa0
 - Reference community demand (Discord requests, etc.)
 - Provide data or evidence supporting the need
 
-### Include Portfolio
-- Link to previous work samples
-- Show relevant experience
-- Demonstrate quality standards
-
-### Set Clear Scope
-- Define timeline expectations
-- Outline what's included (and what's not)
-- Break large projects into milestones
-
 ---
 
 ## Examples of Non-Technical Contributions
@@ -90,10 +80,6 @@ https://intelligent-sense-d85.notion.site/29bbd0c5f00680cd891dc3766e6f5aa0
 ### Marketing
 - "Run a Twitter Spaces session about market governance"
 - "Create 10 educational short-form videos about ZC"
-
-### Research
-- "Analyze competitor tokenomics and provide recommendations"
-- "Survey community for top 10 feature requests"
 
 ---
 
