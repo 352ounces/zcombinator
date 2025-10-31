@@ -279,7 +279,7 @@ export async function POST(
 
       // Filter for transactions involving the specific token
       const relevantTransactions = mockTransactions.filter(tx =>
-        tx.tokenTransfers?.some(transfer => transfer.mint === tokenAddress)
+        tx.tokenTransfers?.some((transfer: any) => transfer.mint === tokenAddress)
       );
 
       // Parse transactions using the same parser

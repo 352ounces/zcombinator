@@ -11,9 +11,9 @@ import { MOCK_TOKEN_METADATA } from '@/lib/mock/mockData';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { hash: string } }
+  { params }: { params: Promise<{ hash: string }> }
 ) {
-  const hash = params.hash;
+  const { hash } = await params;
 
   // Look up metadata by hash
   const metadata = MOCK_TOKEN_METADATA[hash];

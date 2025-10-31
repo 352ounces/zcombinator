@@ -64,6 +64,7 @@ export interface MockMarketData {
 export interface MockPresale {
   id: number;
   token_address: string;
+  base_mint_priv_key: string;
   creator_wallet: string;
   token_name: string;
   token_symbol: string;
@@ -71,7 +72,7 @@ export interface MockPresale {
   presale_tokens: any;
   status: string;
   escrow_pub_key: string;
-  escrow_priv_key: string | null;
+  escrow_priv_key?: string;
   tokens_bought: string;
   base_mint_address: string;
   vesting_duration_hours: number;
@@ -567,6 +568,7 @@ export const MOCK_PRESALES: MockPresale[] = [
   {
     id: 1,
     token_address: '5eykt4UsFv8P8NJdTREpY1vzqKqZKvdpKuc147dw2N9d',
+    base_mint_priv_key: 'MockBaseMintPrivKey111111111111111111111111111',
     creator_wallet: MOCK_WALLETS.creator1,
     token_name: 'ZCombinator Token',
     token_symbol: 'ZCOM',
@@ -574,7 +576,6 @@ export const MOCK_PRESALES: MockPresale[] = [
     presale_tokens: { amount: 10000000 },
     status: 'active',
     escrow_pub_key: 'EscrowMockPublicKey1111111111111111111111111',
-    escrow_priv_key: null,
     tokens_bought: '3500000',
     base_mint_address: 'So11111111111111111111111111111111111111112',
     vesting_duration_hours: 720,
@@ -583,6 +584,7 @@ export const MOCK_PRESALES: MockPresale[] = [
   {
     id: 2,
     token_address: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
+    base_mint_priv_key: 'MockBaseMintPrivKey222222222222222222222222222',
     creator_wallet: MOCK_WALLETS.creator2,
     token_name: 'Moon Token',
     token_symbol: 'MOON',
@@ -590,7 +592,6 @@ export const MOCK_PRESALES: MockPresale[] = [
     presale_tokens: { amount: 15000000 },
     status: 'completed',
     escrow_pub_key: 'EscrowMockPublicKey2222222222222222222222222',
-    escrow_priv_key: null,
     tokens_bought: '15000000',
     base_mint_address: 'So11111111111111111111111111111111111111112',
     vesting_duration_hours: 1440,

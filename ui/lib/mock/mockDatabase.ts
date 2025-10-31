@@ -69,6 +69,10 @@ export class MockDatabase {
     // Initialize with mock data
     this.tokenLaunches = MOCK_TOKENS.map((token) => ({
       ...token,
+      launch_time: new Date(token.launch_time),
+      created_at: new Date(token.created_at),
+      creator_twitter: token.creator_twitter || undefined,
+      creator_github: token.creator_github || undefined,
       verified: token.verified || false,
     }));
 
@@ -77,6 +81,7 @@ export class MockDatabase {
     // Generate presale bids for each presale
     this.presaleBids = [];
     this.presales.forEach((presale, index) => {
+      if (!presale.id) return; // Skip presales without IDs
       // Generate 3-5 mock bids per presale
       const numBids = Math.floor(Math.random() * 3) + 3;
       for (let i = 0; i < numBids; i++) {
@@ -84,29 +89,43 @@ export class MockDatabase {
         const amount = Math.floor(Math.random() * 5000000000) + 1000000000; // 1-5 SOL in lamports
         this.presaleBids.push({
           id: this.nextId.presaleBids++,
-          presale_id: presale.id,
+          presale_id: presale.id!,
+          token_address: presale.token_address,
           wallet_address: walletAddress,
-          amount_lamports: amount.toString(),
+          amount_lamports: BigInt(amount),
           transaction_signature: `mock_presale_bid_${presale.id}_${i}_${Date.now()}`,
-          created_at: new Date(Date.now() - (i * 3600000)).toISOString(),
+          created_at: new Date(Date.now() - (i * 3600000)),
         });
       }
     });
 
     this.designatedClaims = MOCK_DESIGNATED_CLAIMS.map((claim) => ({
       ...claim,
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
     }));
 
-    this.emissionSplits = MOCK_EMISSION_SPLITS.map((split) => ({ ...split }));
+    this.emissionSplits = MOCK_EMISSION_SPLITS.map((split) => ({
+      ...split,
+      created_at: split.created_at ? new Date(split.created_at) : new Date(),
+    }));
 
-    this.claimRecords = MOCK_CLAIM_RECORDS.map((record) => ({ ...record }));
+    this.claimRecords = MOCK_CLAIM_RECORDS.map((record) => ({
+      ...record,
+      amount: record.amount.toString(),
+      confirmed_at: record.confirmed_at ? new Date(record.confirmed_at) : new Date(),
+    }));
 
     // Generate holders for each token
     this.tokenHolders = [];
     MOCK_TOKENS.forEach((token) => {
       const holders = generateMockHolders(token.token_address, 12);
-      this.tokenHolders.push(...holders);
+      const convertedHolders = holders.map(holder => ({
+        ...holder,
+        created_at: new Date(holder.created_at),
+        updated_at: new Date(holder.updated_at),
+        last_sync_at: holder.last_sync_at ? new Date(holder.last_sync_at) : undefined,
+      }));
+      this.tokenHolders.push(...convertedHolders);
     });
 
     // Generate mint transactions from mock transactions
@@ -122,9 +141,9 @@ export class MockDatabase {
             timestamp: tx.timestamp,
             token_address: token.token_address,
             wallet_address: transfer.toUserAccount,
-            amount: transfer.tokenAmount,
-            tx_data: tx,
-            created_at: new Date(tx.timestamp * 1000).toISOString(),
+            amount: BigInt(transfer.tokenAmount),
+            tx_data: tx as unknown as Record<string, unknown>,
+            created_at: new Date(tx.timestamp * 1000),
           });
         }
       });
@@ -158,8 +177,8 @@ export class MockDatabase {
 
     const newLaunch: TokenLaunch = {
       id: this.nextId.tokenLaunches++,
-      launch_time: new Date().toISOString(),
-      created_at: new Date().toISOString(),
+      launch_time: new Date(),
+      created_at: new Date(),
       verified: false,
       ...launch,
     };
@@ -253,7 +272,7 @@ export class MockDatabase {
 
     const newTx: MintTransaction = {
       id: this.nextId.mintTransactions++,
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
       ...transaction,
     };
 
@@ -267,9 +286,9 @@ export class MockDatabase {
     }
   }
 
-  async getTotalMintedFromCache(tokenAddress: string): Promise<number> {
+  async getTotalMintedFromCache(tokenAddress: string): Promise<bigint> {
     const transactions = await this.getCachedMintTransactions(tokenAddress);
-    return transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    return transactions.reduce((sum, tx) => sum + tx.amount, BigInt(0));
   }
 
   async getLatestCachedTransaction(tokenAddress: string): Promise<MintTransaction | null> {
@@ -326,7 +345,7 @@ export class MockDatabase {
       token_address: tokenAddress,
       amount,
       transaction_signature: `pending_${Date.now()}_${Math.random()}`,
-      confirmed_at: new Date().toISOString(),
+      confirmed_at: new Date(),
     };
 
     this.claimRecords.push(newRecord);
@@ -348,7 +367,7 @@ export class MockDatabase {
 
     if (record) {
       record.transaction_signature = newSignature;
-      record.confirmed_at = new Date().toISOString();
+      record.confirmed_at = new Date();
     }
   }
 
@@ -381,15 +400,15 @@ export class MockDatabase {
     if (existing) {
       Object.assign(existing, {
         ...holder,
-        updated_at: new Date().toISOString(),
+        updated_at: new Date(),
       });
       return existing;
     }
 
     const newHolder: TokenHolder = {
       id: this.nextId.tokenHolders++,
-      created_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
+      created_at: new Date(),
+      updated_at: new Date(),
       ...holder,
     };
 
@@ -397,9 +416,22 @@ export class MockDatabase {
     return newHolder;
   }
 
-  async batchUpsertTokenHolders(tokenAddress: string, holders: Omit<TokenHolder, 'id' | 'created_at' | 'updated_at'>[]): Promise<void> {
+  async batchUpsertTokenHolders(
+    tokenAddress: string,
+    holders: Array<{
+      wallet_address: string;
+      token_balance: string;
+      staked_balance?: string;
+    }>
+  ): Promise<void> {
     for (const holder of holders) {
-      await this.upsertTokenHolder(holder);
+      await this.upsertTokenHolder({
+        token_address: tokenAddress,
+        wallet_address: holder.wallet_address,
+        token_balance: holder.token_balance,
+        staked_balance: holder.staked_balance || '0',
+        last_sync_at: new Date(),
+      });
     }
   }
 
@@ -423,7 +455,7 @@ export class MockDatabase {
 
     Object.assign(holder, {
       ...labels,
-      updated_at: new Date().toISOString(),
+      updated_at: new Date(),
     });
 
     return holder;
@@ -466,15 +498,12 @@ export class MockDatabase {
       id: this.nextId.designatedClaims++,
       token_address: tokenAddress,
       original_launcher: originalLauncher,
-      designated_twitter: designatedTwitter || null,
-      designated_github: designatedGithub || null,
-      verified_wallet: null,
-      verified_embedded_wallet: null,
-      verified_at: null,
-      verification_lock_until: null,
-      verification_attempts: 0,
-      last_verification_attempt: null,
-      created_at: new Date().toISOString(),
+      designated_twitter: designatedTwitter || undefined,
+      designated_github: designatedGithub || undefined,
+      verified_wallet: undefined,
+      verified_embedded_wallet: undefined,
+      verified_at: undefined,
+      created_at: new Date(),
     };
 
     this.designatedClaims.push(newClaim);
@@ -510,7 +539,7 @@ export class MockDatabase {
 
     claim.verified_wallet = verifiedWallet;
     claim.verified_embedded_wallet = verifiedEmbeddedWallet || null;
-    claim.verified_at = new Date().toISOString();
+    claim.verified_at = new Date();
 
     return claim;
   }
@@ -547,7 +576,7 @@ export class MockDatabase {
         recipient_wallet: split.recipient_wallet,
         split_percentage: split.split_percentage,
         label: split.label || null,
-        created_at: new Date().toISOString(),
+        created_at: new Date(),
       };
 
       this.emissionSplits.push(newSplit);
@@ -615,7 +644,7 @@ export class MockDatabase {
   async createPresale(presale: Omit<Presale, 'id' | 'created_at'>): Promise<Presale> {
     const newPresale: Presale = {
       id: this.nextId.presales++,
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
       ...presale,
     };
 
@@ -689,9 +718,9 @@ export class MockDatabase {
       wallet_address: walletAddress,
       challenge_nonce: challengeNonce,
       challenge_message: challengeMessage,
-      expires_at: expiresAt.toISOString(),
+      expires_at: expiresAt,
       used: false,
-      created_at: new Date().toISOString(),
+      created_at: new Date(),
     };
 
     this.verificationChallenges.push(newChallenge);
@@ -716,21 +745,15 @@ export class MockDatabase {
   }
 
   async incrementVerificationAttempts(tokenAddress: string): Promise<void> {
-    const claim = await this.getDesignatedClaimByToken(tokenAddress);
-    if (claim) {
-      claim.verification_attempts = (claim.verification_attempts || 0) + 1;
-      claim.last_verification_attempt = new Date().toISOString();
-    }
+    // Mock implementation - do nothing since these fields aren't in the type
+    return;
   }
 
   // Mock function for verification lock
   async acquireVerificationLockDB(tokenAddress: string, lockDurationMs: number): Promise<boolean> {
     // In mock mode, always allow lock
     const claim = await this.getDesignatedClaimByToken(tokenAddress);
-    if (!claim) return false;
-
-    claim.verification_lock_until = new Date(Date.now() + lockDurationMs).toISOString();
-    return true;
+    return !!claim;
   }
 }
 
