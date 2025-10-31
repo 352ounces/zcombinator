@@ -144,7 +144,7 @@ export function TokenCardVSCode({
               ({tokenSymbol || '-'})
             </span>
             {marketCap !== undefined && (
-              <span className="text-[14px] text-green-400 font-semibold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+              <span className="text-[14px] text-[#b2e9fe] font-semibold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
                 {formatMarketCap(marketCap)}
               </span>
             )}

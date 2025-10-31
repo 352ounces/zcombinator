@@ -7,6 +7,8 @@ import { useTabContext } from '@/contexts/TabContext';
 const BASE_TABS = [
   { name: 'landing-page.zc', href: '/' },
   { name: 'faq.zc', href: '/faq' },
+  { name: 'decisions.zc', href: '/decisions' },
+  { name: 'contributions.zc', href: '/contributions' },
   { name: 'projects.zc', href: '/projects' },
   { name: 'launch.zc', href: '/launch' },
   { name: 'swap.zc', href: '/swap' },
@@ -25,7 +27,7 @@ export function TabBar() {
   // When authenticated: add portfolio tab and remove claim tab
   // When not authenticated: show all BASE_TABS including claim
   const tabs = isPrivyAuthenticated
-    ? [...BASE_TABS.slice(0, 4), PORTFOLIO_TAB, ...BASE_TABS.slice(4, 6)] // excludes claim (index 6)
+    ? [...BASE_TABS.slice(0, 5), PORTFOLIO_TAB, ...BASE_TABS.slice(5, 8)] // excludes claim (index 8)
     : BASE_TABS;
 
   const handleStaticTabClick = (href: string) => {
