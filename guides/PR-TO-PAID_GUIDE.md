@@ -25,7 +25,7 @@ Get paid in $ZC tokens for your contributions through our market-based governanc
 Where:
 - **Final TWAP Pass-Fail Gap** = Time-Weighted Average Price difference between PASS and FAIL markets
 - **ZC token supply in circulation** = Total circulating supply at the start of the decision market
-- **20%** = Contributor reward percentage (80% goes to protocol)
+- **20%** = Contributor reward percentage
 - **Cap**: Maximum 2 million $ZC per PR
 
 ### Vesting Schedule
