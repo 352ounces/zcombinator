@@ -68,13 +68,7 @@ Claude Code will handle the git commands for you.
 
 **Set up the project:**
 
-Prompt Claude Code:
-
-```
-cd to ui and run pnpm install
-```
-
-This installs all the necessary dependencies for the project.
+Follow the **[Codebase Setup Guide](./CODEBASE_SETUP_GUIDE.md)** to install dependencies and start the dev server. It has copy/paste prompts for Claude Code that will get you running in under 2 minutes.
 
 ## 5. Make Your Changes
 
