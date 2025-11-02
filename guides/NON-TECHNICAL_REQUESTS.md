@@ -8,11 +8,24 @@ Not a developer? You can still contribute to Z Combinator and earn $ZC tokens th
 
 Submit your work request as a `.md` or `.txt` file in the [/pr-requests](/pr-requests) directory.
 
-**File format:**
-- Name your file descriptively (e.g., `twitter-content-strategy.md`, `landing-page-design.txt`)
-- Include what you want to work on and why it adds value
-- Be sure to include your name in the proposal
-- Submit it to: [/pr-requests](/pr-requests)
+**Your request file should include:**
+
+### Title
+A clear, descriptive title for your work request
+
+### Discord Username
+Your Discord username so we can reach you
+
+### What Should Be Built?
+Detailed description of the work you want to complete
+
+### Why Does This Matter?
+Impact on the project, who benefits, expected outcome
+
+### Supporting Evidence
+Links, examples, data, or anything that supports why this work is valuable
+
+---
 
 That's it. Your request will be reviewed and if approved, you'll be able to get paid in $ZC tokens through the same market-based governance system as code contributions.
 
