@@ -19,8 +19,9 @@ const TEST_MINT = new PublicKey('9q7QYACmxQmj1XATGua2eXpWfZHztibB4gw59FJobCts');
 const SHIRTLESS_MINT = new PublicKey('34mjcwkHeZWqJ8Qe3WuMJjHnCZ1pZeAd3AQ1ZJkKH6is');
 const GITPOST_MINT = new PublicKey('BSu52RaorX691LxPyGmLp2UiPzM6Az8w2Txd9gxbZN14');
 const PERC_MINT = new PublicKey('zcQPTGhdiTMFM6erwko2DWBTkN8nCnAGM7MUX9RpERC');
+const ZTORIO_MINT = new PublicKey('5LcnUNQqWZdp67Y7dd7jrSsrqFaBjAixMPVQ3aU7bZTo');
 
-type Token = 'SOL' | 'ZC' | 'TEST' | 'SHIRTLESS' | 'GITPOST' | 'PERC';
+type Token = 'SOL' | 'ZC' | 'TEST' | 'SHIRTLESS' | 'GITPOST' | 'PERC' | 'ZTORIO';
 
 interface SolanaWalletProvider {
   signAndSendTransaction: (transaction: Transaction) => Promise<{ signature: string }>;
@@ -47,7 +48,7 @@ export function SwapContent() {
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
   const [showFromSelector, setShowFromSelector] = useState(false);
   const [showToSelector, setShowToSelector] = useState(false);
-  const [balances, setBalances] = useState<Record<Token, string>>({ SOL: '0', ZC: '0', TEST: '0', SHIRTLESS: '0', GITPOST: '0', PERC: '0' });
+  const [balances, setBalances] = useState<Record<Token, string>>({ SOL: '0', ZC: '0', TEST: '0', SHIRTLESS: '0', GITPOST: '0', PERC: '0', ZTORIO: '0' });
   const [isLoadingBalances, setIsLoadingBalances] = useState(false);
   const [copiedWallet, setCopiedWallet] = useState(false);
   const [refreshingBalancesAfterSwap, setRefreshingBalancesAfterSwap] = useState(false);
@@ -60,6 +61,7 @@ export function SwapContent() {
     if (token === 'SHIRTLESS') return 'SHIRTLESS';
     if (token === 'GITPOST') return 'POST';
     if (token === 'PERC') return 'PERC';
+    if (token === 'ZTORIO') return 'ZTORIO';
     return token;
   };
 
@@ -70,6 +72,7 @@ export function SwapContent() {
     if (token === 'SHIRTLESS') return '/shirtless-logo.png';
     if (token === 'GITPOST') return '/gitpost-logo.png';
     if (token === 'PERC') return '/percent.png';
+    if (token === 'ZTORIO') return '/ztorio.png';
     return '/percent.png';
   };
 
@@ -95,7 +98,7 @@ export function SwapContent() {
     setIsLoadingBalances(true);
     try {
       const connection = new Connection(RPC_URL, 'confirmed');
-      const newBalances: Record<Token, string> = { SOL: '0', ZC: '0', TEST: '0', SHIRTLESS: '0', GITPOST: '0', PERC: '0' };
+      const newBalances: Record<Token, string> = { SOL: '0', ZC: '0', TEST: '0', SHIRTLESS: '0', GITPOST: '0', PERC: '0', ZTORIO: '0' };
 
       // Fetch SOL balance
       const solBalance = await connection.getBalance(wallet);
@@ -146,6 +149,15 @@ export function SwapContent() {
         newBalances.PERC = '0';
       }
 
+      // Fetch ZTORIO balance
+      try {
+        const ztorioAta = await getAssociatedTokenAddress(ZTORIO_MINT, wallet, true);
+        const ztorioAccount = await getAccount(connection, ztorioAta);
+        newBalances.ZTORIO = (Number(ztorioAccount.amount) / Math.pow(10, 6)).toFixed(4);
+      } catch (e) {
+        newBalances.ZTORIO = '0';
+      }
+
       setBalances(newBalances);
     } catch (error) {
       console.error('Error fetching balances:', error);
@@ -188,6 +200,7 @@ export function SwapContent() {
 
     // Direct CP-AMM swaps
     if ((from === 'SOL' && to === 'ZC') || (from === 'ZC' && to === 'SOL')) return 'direct-cp';
+    if ((from === 'ZC' && to === 'ZTORIO') || (from === 'ZTORIO' && to === 'ZC')) return 'direct-cp';
 
     // Direct DBC swaps
     if ((from === 'ZC' && to === 'TEST') || (from === 'TEST' && to === 'ZC')) return 'direct-dbc';
@@ -204,6 +217,14 @@ export function SwapContent() {
     if (from === 'GITPOST' && to === 'ZC') return 'double';
     if (from === 'SOL' && to === 'PERC') return 'double';
     if (from === 'PERC' && to === 'SOL') return 'double';
+    if (from === 'SOL' && to === 'ZTORIO') return 'double';
+    if (from === 'ZTORIO' && to === 'SOL') return 'double';
+    if (from === 'TEST' && to === 'ZTORIO') return 'double';
+    if (from === 'ZTORIO' && to === 'TEST') return 'double';
+    if (from === 'SHIRTLESS' && to === 'ZTORIO') return 'double';
+    if (from === 'ZTORIO' && to === 'SHIRTLESS') return 'double';
+    if (from === 'PERC' && to === 'ZTORIO') return 'double';
+    if (from === 'ZTORIO' && to === 'PERC') return 'double';
 
     // Triple swaps (3 hops)
     if (from === 'TEST' && to === 'SHIRTLESS') return 'triple';
@@ -212,6 +233,16 @@ export function SwapContent() {
     if (from === 'GITPOST' && to === 'TEST') return 'triple';
     if (from === 'SOL' && to === 'GITPOST') return 'triple';
     if (from === 'GITPOST' && to === 'SOL') return 'triple';
+    if (from === 'ZTORIO' && to === 'GITPOST') return 'triple';
+    if (from === 'GITPOST' && to === 'ZTORIO') return 'triple';
+    if (from === 'TEST' && to === 'PERC') return 'triple';
+    if (from === 'PERC' && to === 'TEST') return 'triple';
+    if (from === 'SHIRTLESS' && to === 'PERC') return 'triple';
+    if (from === 'PERC' && to === 'SHIRTLESS') return 'triple';
+    if (from === 'GITPOST' && to === 'PERC') return 'triple';
+    if (from === 'PERC' && to === 'GITPOST') return 'triple';
+    if (from === 'ZTORIO' && to === 'PERC') return 'triple';
+    if (from === 'PERC' && to === 'ZTORIO') return 'triple';
 
     return 'invalid';
   };
@@ -399,7 +430,7 @@ export function SwapContent() {
               )}
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC'] as Token[]).map((token) => (
+              {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC', 'ZTORIO'] as Token[]).map((token) => (
                 <div key={token} className="bg-[#2B2B2A] rounded-lg p-3 flex items-center gap-3">
                   {getTokenIcon(token).startsWith('/') ? (
                     <img src={getTokenIcon(token)} alt={token} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
@@ -500,7 +531,7 @@ export function SwapContent() {
                     onClick={(e) => e.stopPropagation()}
                     className="absolute top-full mt-2 left-0 bg-[#1E1E1E] border border-gray-700 rounded-xl overflow-hidden shadow-xl z-50 min-w-[160px]"
                   >
-                    {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC'] as Token[]).filter(t => t !== fromToken && t !== toToken).map((token) => (
+                    {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC', 'ZTORIO'] as Token[]).filter(t => t !== fromToken && t !== toToken).map((token) => (
                       <button
                         key={token}
                         onClick={(e) => {
@@ -595,7 +626,7 @@ export function SwapContent() {
                     onClick={(e) => e.stopPropagation()}
                     className="absolute top-full mt-2 left-0 bg-[#1E1E1E] border border-gray-700 rounded-xl overflow-hidden shadow-xl z-10 min-w-[160px]"
                   >
-                    {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC'] as Token[]).filter(t => t !== fromToken && t !== toToken).map((token) => (
+                    {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC', 'ZTORIO'] as Token[]).filter(t => t !== fromToken && t !== toToken).map((token) => (
                       <button
                         key={token}
                         onClick={(e) => {
