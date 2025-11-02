@@ -66,6 +66,13 @@ export const TOKEN_CONFIG: Record<Token, {
     mint: new PublicKey('zcQPTGhdiTMFM6erwko2DWBTkN8nCnAGM7MUX9RpERC'),
     icon: '/sp-logo.png',
   },
+  ZTORIO: {
+    symbol: 'ZTORIO',
+    displaySymbol: 'ZTORIO',
+    decimals: 6,
+    mint: new PublicKey('5LcnUNQqWZdp67Y7dd7jrSsrqFaBjAixMPVQ3aU7bZTo'),
+    icon: '/ztorio.png',
+  },
 };
 
 // Pool Configuration
@@ -117,6 +124,12 @@ export const POOLS: PoolConfig[] = [
     tokenA: 'ZC',
     tokenB: 'PERC',
     quoteToken: 'ZC',
+  },
+  {
+    address: 'J9y4bok9Dj4rJLBKBkj1Ls29u7AXNHdfZCL7Q6DwExW',
+    type: 'cp-amm',
+    tokenA: 'ZC',
+    tokenB: 'ZTORIO',
   },
 ];
 

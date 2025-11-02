@@ -1,6 +1,6 @@
 import { Transaction } from '@solana/web3.js';
 
-export type Token = 'SOL' | 'ZC' | 'TEST' | 'SHIRTLESS' | 'GITPOST' | 'PERC';
+export type Token = 'SOL' | 'ZC' | 'TEST' | 'SHIRTLESS' | 'GITPOST' | 'PERC' | 'ZTORIO';
 
 export type SwapRoute = 'direct-cp' | 'direct-dbc' | 'double' | 'triple' | 'jupiter' | 'invalid';
 
