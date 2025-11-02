@@ -301,7 +301,20 @@ export async function calculateClaimEligibility(
   const now = new Date();
   const msElapsed = now.getTime() - tokenLaunchTime.getTime();
   const fullDaysElapsed = Math.floor(msElapsed / (24 * 60 * 60 * 1000));
-  const totalPeriods = fullDaysElapsed + 1; // +1 for initial claim at launch
+
+  // Special case: ZC token emissions end on March 2, 2026 at 11pm ET (March 3, 2026 4am UTC)
+  const ZC_TOKEN_ADDRESS = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
+  const ZC_EMISSIONS_CUTOFF = new Date('2026-03-03T04:00:00.000Z');
+
+  let totalPeriods;
+  if (tokenAddress === ZC_TOKEN_ADDRESS && now > ZC_EMISSIONS_CUTOFF) {
+    // Cap periods at the cutoff date - no new emissions after this point
+    const msToCutoff = ZC_EMISSIONS_CUTOFF.getTime() - tokenLaunchTime.getTime();
+    const daysToCutoff = Math.floor(msToCutoff / (24 * 60 * 60 * 1000));
+    totalPeriods = daysToCutoff + 1;
+  } else {
+    totalPeriods = fullDaysElapsed + 1; // +1 for initial claim at launch
+  }
 
   // Each period allows 1,000,000 tokens
   const TOKENS_PER_PERIOD = BigInt(1000000);
