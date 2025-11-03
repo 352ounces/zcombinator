@@ -20,7 +20,7 @@ Get paid in $ZC tokens for your contributions through our market-based governanc
 
 ### How Much You Earn
 
-**Reward Amount (up to 2 million $ZC) = 20% × Final TWAP Pass-Fail Gap (price) × ZC token supply in circulation**
+**Reward Amount: 400k $ZC flat**
 
 Where:
 - **Final TWAP Pass-Fail Gap** = Time-Weighted Average Price difference between PASS and FAIL markets
