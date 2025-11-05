@@ -6,24 +6,36 @@ Not a developer? You can still contribute to Z Combinator and earn $ZC tokens th
 
 ## How to Submit a Request
 
-Submit your work request as a `.md` or `.txt` file in the [/pr-requests](/pr-requests) directory.
+1. **Create a GitHub account** at [github.com](https://github.com).
 
-**Your request file should include:**
+2. **Go to the repository:** [https://github.com/zcombinatorio/zcombinator/](https://github.com/zcombinatorio/zcombinator/)
 
-### Title
-A clear, descriptive title for your work request
+3. **In the top-right corner**, click the **Fork** menu and select **Create Fork**.
 
-### Discord Username
-Your Discord username so we can reach you
+4. **Name your fork** (e.g., your Discord/X username) and wait for the fork to be created.
 
-### What Should Be Built?
-Detailed description of the work you want to complete
+5. **Go to your GitHub profile** (top-right corner).
 
-### Why Does This Matter?
-Impact on the project, who benefits, expected outcome
+6. **In the top-left corner**, click the **Repositories** tab.
 
-### Supporting Evidence
-Links, examples, data, or anything that supports why this work is valuable
+7. **Open the fork you just created.** The URL should look like:
+   ```
+   https://github.com/your-fork-name/zcombinator
+   ```
+
+8. **Next to the green Code button**, click **Add file → Create file**.
+
+9. **Name your new file at the top** — this should be the **title or topic of your PR** (e.g., your idea or code contribution, one-two words).
+
+10. **Open another browser tab** and go to: [https://github.com/zcombinatorio/zcombinator](https://github.com/zcombinatorio/zcombinator)
+
+11. **Navigate to the folder** `github.io` labeled **PR templates**. Expand the left tree called **PULL_REQUEST_TEMPLATE**.
+
+12. **Copy the code from the template** that matches your PR type (work request, code contribution, or tweet request) into your new file in your fork tab.
+
+13. **Edit and customize the template** as needed, then click **Commit changes**.
+
+14. **Click Pull Request** to submit your PR for review by the ZCombinator team.
 
 ---
 
