@@ -17,6 +17,7 @@
  */
 
 import { getCachedTokenMintHistory } from './transactionCache';
+import { shouldUseMockHelius, mockHelius } from './mock';
 
 interface TokenTransfer {
   timestamp: number;
@@ -174,6 +175,15 @@ async function retryMissingTransactions(signatures: string[], apiKey: string, ma
 export async function getTokenMintHistory(
   tokenAddress: string
 ): Promise<{ totalMinted: bigint; transactions: ParsedTransaction[] }> {
+  // Use mock Helius if API key not available
+  if (shouldUseMockHelius()) {
+    const result = await mockHelius.calculateClaimEligibility(tokenAddress);
+    return {
+      totalMinted: BigInt(result.totalMinted),
+      transactions: []
+    };
+  }
+
   const HELIUS_API_KEY = process.env.HELIUS_API_KEY;
 
   if (!HELIUS_API_KEY) {
