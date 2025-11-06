@@ -1,0 +1,1 @@
+Turn off staking completely! Remove all lockups and the inflation that comes with it.
