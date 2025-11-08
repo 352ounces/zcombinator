@@ -17,6 +17,7 @@ export async function fetchBalances(
     SHIRTLESS: '0',
     GITPOST: '0',
     PERC: '0',
+    ZTORIO: '0',
   };
 
   try {
