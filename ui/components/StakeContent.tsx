@@ -454,8 +454,8 @@ export function StakeContent() {
           <div className="pb-0">
             <p className="mt-7 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}Stake to earn yield and get rewarded more for your contributions</p>
             <p className="mt-1 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}Staking for other ZC launches will be live soon</p>
-            <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Once you stake, funds are <span className="font-bold text-white">locked</span>. Unlocks are currently live.</p>
-            <p className="mt-0.5 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Staking earlier in each period leads to higher rewards.</p>
+            <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Usually, once you stake, funds are <span className="font-bold text-white">locked</span>. Unlocks are currently live.</p>
+            <p className="mt-0.5 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>The next staking period parameters are TBD. Unlocks will remain open until that time.</p>
           </div>
 
           {/* Wallet Section */}
