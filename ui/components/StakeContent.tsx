@@ -72,7 +72,7 @@ export function StakeContent() {
 
   const calculateAPY = useCallback((): number => {
     if (vaultBalance === 0) return 0;
-    const REWARD_TOKENS = 15000000;
+    const REWARD_TOKENS = 0;
     const rewardPerToken = REWARD_TOKENS / vaultBalance;
     const compoundingPeriodsPerYear = 52;
     return 100 * (Math.pow(1 + rewardPerToken, compoundingPeriodsPerYear) - 1);
@@ -454,7 +454,7 @@ export function StakeContent() {
           <div className="pb-0">
             <p className="mt-7 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}Stake to earn yield and get rewarded more for your contributions</p>
             <p className="mt-1 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}Staking for other ZC launches will be live soon</p>
-            <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Once you stake, funds are <span className="font-bold text-white">locked</span>. The next unlock will be Nov 7th.</p>
+            <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Once you stake, funds are <span className="font-bold text-white">locked</span>. Unlocks are currently live.</p>
             <p className="mt-0.5 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Staking earlier in each period leads to higher rewards.</p>
           </div>
 
