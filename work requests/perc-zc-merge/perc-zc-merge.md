@@ -22,3 +22,9 @@
 As soon as the proposal passes:
 1. Liquidity will be pulled from the AMM
 2. The merger operation will proceed within 48 hours of proposal passing
+
+## Post-Merger Plans
+
+The internal plans of the **Percent Point Leaderboard** will be revealed to the core ZC team.
+
+Tokenomics plans, combined messaging, and product details will be revealed in future decision markets and discussions.
