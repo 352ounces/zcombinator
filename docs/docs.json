@@ -67,6 +67,13 @@
             ]
           },
           {
+            "group": "Fee Claim endpoints",
+            "pages": [
+              "api-reference/fee-claim/claim",
+              "api-reference/fee-claim/confirm"
+            ]
+          },
+          {
             "group": "Utility endpoints",
             "pages": [
               "api-reference/utility/health",
