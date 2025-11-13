@@ -19,75 +19,16 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import * as crypto from 'crypto';
-import nacl from 'tweetnacl';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import {
-  MintClaimRequestBody,
-  ConfirmClaimRequestBody,
-  MintClaimResponseBody,
-  ConfirmClaimResponseBody,
-  ClaimInfoResponseBody,
-  ErrorResponseBody
-} from './types/server';
-import { Connection, Keypair, Transaction, PublicKey, ComputeBudgetProgram, SystemProgram } from '@solana/web3.js';
-import {
-  createAssociatedTokenAccountIdempotentInstruction,
-  createMintToInstruction,
-  getMint,
-  TOKEN_PROGRAM_ID,
-  ASSOCIATED_TOKEN_PROGRAM_ID,
-  getAssociatedTokenAddress,
-  createAssociatedTokenAccountInstruction,
-  createTransferInstruction,
-  getAccount
-} from '@solana/spl-token';
+import { Connection, Keypair, Transaction } from '@solana/web3.js';
 import bs58 from 'bs58';
-import BN from 'bn.js';
-import { DynamicBondingCurveClient } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import {
   prepareTokenLaunch,
   confirmAndRecordLaunch,
-  generateTokenKeypair
 } from './lib/launchService';
 import claimsRouter from './routes/claims';
 import presaleRouter from './routes/presale';
 import feeClaimRouter from './routes/fee-claim';
-import {
-  getTokenLaunchTime,
-  hasRecentClaim,
-  hasRecentClaimByWallet,
-  getTotalClaimedByWallet,
-  preRecordClaim,
-  getTokenCreatorWallet,
-  getDesignatedClaimByToken,
-  getVerifiedClaimWallets,
-  getPresaleByTokenAddress,
-  getUserPresaleContribution,
-  getPresaleBids,
-  getTotalPresaleBids,
-  recordPresaleBid,
-  getPresaleBidBySignature,
-  getEmissionSplits,
-  getWalletEmissionSplit,
-  hasClaimRights
-} from './lib/db';
-import { calculateClaimEligibility } from './lib/helius';
-import {
-  calculateVestingInfo,
-  recordPresaleClaim,
-  getPresaleStats,
-  initializePresaleClaims,
-  type VestingInfo
-} from './lib/presaleVestingService';
-import { decryptEscrowKeypair } from './lib/presale-escrow';
-import { decrypt } from './lib/crypto';
-import { updatePresaleStatus } from './lib/db';
-import {
-  isValidSolanaAddress,
-  isValidTransactionSignature,
-} from './lib/validation';
-import { verifyPresaleTokenTransaction } from './lib/solana-verification';
 
 dotenv.config();
 
@@ -112,10 +53,6 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests from this IP, please try again later.',
-  skip: (req) => {
-    // Skip rate limiting for presale claim endpoints
-    return req.path.includes('/presale/') && req.path.includes('/claims');
-  }
 });
 
 // Separate rate limiter for presale claim endpoints (more lenient)

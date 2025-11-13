@@ -597,6 +597,7 @@ router.post('/confirm', feeClaimLimiter, async (req: Request, res: Response) => 
     const COMPUTE_BUDGET_PROGRAM_ID = ComputeBudgetProgram.programId;
     const LIGHTHOUSE_PROGRAM_ID = new PublicKey("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95");
     const METEORA_CP_AMM_PROGRAM_ID = new PublicKey("CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C");
+    const METEORA_DAMM_V2_PROGRAM_ID = new PublicKey("cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG");
 
     // Parse stored data for validation
     const lpOwnerAddress = new PublicKey(feeClaimData.lpOwnerAddress);
@@ -612,12 +613,13 @@ router.post('/confirm', feeClaimLimiter, async (req: Request, res: Response) => 
       const instruction = transaction.instructions[i];
       const programId = instruction.programId;
 
-      // Allow safe programs: TOKEN_PROGRAM, ASSOCIATED_TOKEN_PROGRAM, ComputeBudget, Lighthouse, and Meteora CP AMM
+      // Allow safe programs: TOKEN_PROGRAM, ASSOCIATED_TOKEN_PROGRAM, ComputeBudget, Lighthouse, Meteora CP AMM, and Meteora DAMM v2
       if (!programId.equals(TOKEN_PROGRAM_ID) &&
           !programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID) &&
           !programId.equals(COMPUTE_BUDGET_PROGRAM_ID) &&
           !programId.equals(LIGHTHOUSE_PROGRAM_ID) &&
           !programId.equals(METEORA_CP_AMM_PROGRAM_ID) &&
+          !programId.equals(METEORA_DAMM_V2_PROGRAM_ID) &&
           !programId.equals(SystemProgram.programId)) {
         return res.status(400).json({
           error: 'Invalid transaction: unauthorized program instruction detected',
