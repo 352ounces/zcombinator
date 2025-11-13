@@ -52,6 +52,7 @@ import {
 } from './lib/launchService';
 import claimsRouter from './routes/claims';
 import presaleRouter from './routes/presale';
+import feeClaimRouter from './routes/fee-claim';
 import {
   getTokenLaunchTime,
   hasRecentClaim,
@@ -157,6 +158,9 @@ app.use('/claims', claimsRouter);
 
 // Mount presale routes
 app.use('/presale', presaleRouter);
+
+// Mount fee claim routes
+app.use('/fee-claim', feeClaimRouter);
 
 // Launch token endpoint - returns unsigned transaction
 app.post('/launch', async (req: Request, res: Response) => {
@@ -407,6 +411,8 @@ async function startServer() {
       console.log(`\nEndpoints:`);
       console.log(`  POST /launch                    - Create unsigned transaction`);
       console.log(`  POST /confirm-launch            - Confirm partially signed transaction`);
+      console.log(`  POST /fee-claim/claim           - Build fee claim transaction for Meteora DAMM v2`);
+      console.log(`  POST /fee-claim/confirm         - Confirm fee claim transaction`);
       console.log(`  GET  /claims/:tokenAddress      - Get claim eligibility info`);
       console.log(`  POST /claims/mint               - Create unsigned mint transaction`);
       console.log(`  POST /claims/confirm            - Confirm claim transaction`);
