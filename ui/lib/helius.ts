@@ -316,10 +316,19 @@ export async function calculateClaimEligibility(
   const ZC_TOKEN_ADDRESS = 'GVvPZpC6ymCoiHzYJ7CWZ8LhVn9tL2AUpRjSAsLh6jZC';
   const ZC_EMISSIONS_CUTOFF = new Date('2026-03-03T04:00:00.000Z');
 
+  // Special case: Token emissions end on December 31, 2025 at 23:59:59 UTC
+  const EOY_2025_TOKEN_ADDRESS = 'CtmadLp7st6DSehwFBE4BFvizBQib7kv8quJDTyoUJSP';
+  const EOY_2025_EMISSIONS_CUTOFF = new Date('2025-12-31T23:59:59.999Z');
+
   let totalPeriods;
   if (tokenAddress === ZC_TOKEN_ADDRESS && now > ZC_EMISSIONS_CUTOFF) {
     // Cap periods at the cutoff date - no new emissions after this point
     const msToCutoff = ZC_EMISSIONS_CUTOFF.getTime() - tokenLaunchTime.getTime();
+    const daysToCutoff = Math.floor(msToCutoff / (24 * 60 * 60 * 1000));
+    totalPeriods = daysToCutoff + 1;
+  } else if (tokenAddress === EOY_2025_TOKEN_ADDRESS && now > EOY_2025_EMISSIONS_CUTOFF) {
+    // Cap periods at the cutoff date - no new emissions after this point
+    const msToCutoff = EOY_2025_EMISSIONS_CUTOFF.getTime() - tokenLaunchTime.getTime();
     const daysToCutoff = Math.floor(msToCutoff / (24 * 60 * 60 * 1000));
     totalPeriods = daysToCutoff + 1;
   } else {

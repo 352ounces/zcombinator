@@ -19,7 +19,7 @@ Set up the Z Combinator development environment. Navigate to the ui directory, i
 If you want wallet connection to work:
 
 ```
-Create a .env.local file in the ui/ directory with this line: NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id
+Create a .env.local file in the ui/ directory with this line: NEXT_PUBLIC_PRIVY_APP_ID=cmfx0xezu003ik30bi91hhwbk
 ```
 
 Then restart your dev server.
@@ -67,7 +67,7 @@ We provide the Privy app ID for free. For other services, you need to sign up yo
 
 | Service | What it does | Signup Link | Env Variable |
 |---------|--------------|-------------|--------------|
-| **Privy** | Wallet authentication | ✅ Provided | `NEXT_PUBLIC_PRIVY_APP_ID=your_privy_app_id` |
+| **Privy** | Wallet authentication | ✅ Provided | `NEXT_PUBLIC_PRIVY_APP_ID=cmfx0xezu003ik30bi91hhwbk` |
 | **Helius** | Blockchain data (transactions, balances) | https://www.helius.dev/ | `HELIUS_API_KEY=your_key` |
 | **Birdeye** | Market data (price, market cap, liquidity) | https://birdeye.so/ | `BIRDEYE_API_KEY=your_key` |
 | **Pinata** | IPFS storage for token metadata | https://www.pinata.cloud/ | `PINATA_JWT=your_jwt` |
