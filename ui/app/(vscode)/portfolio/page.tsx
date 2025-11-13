@@ -1,0 +1,967 @@
+'use client';
+
+import { useState, useEffect, useMemo } from 'react';
+import { useWallet } from '@/components/WalletProvider';
+import { useSignTransaction } from '@privy-io/react-auth/solana';
+import { Transaction } from '@solana/web3.js';
+import bs58 from 'bs58';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useTheme } from '@/contexts/ThemeContext';
+import {
+  ClaimInfoResult,
+  ClaimInfoResponse,
+  MintClaimRequest,
+  MintClaimResult,
+  ConfirmClaimRequest,
+  ConfirmClaimResult,
+  isApiError,
+  isClaimInfoResponse,
+  isMintClaimResponse,
+  isConfirmClaimResponse
+} from '@/types/api';
+import { TextInput } from '@/components/TextInput';
+
+interface TokenLaunch {
+  id: number;
+  launch_time: string;
+  creator_wallet: string;
+  token_address: string;
+  token_metadata_url: string;
+  token_name: string | null;
+  token_symbol: string | null;
+  verified?: boolean;
+}
+
+interface TokenMetadata {
+  name: string;
+  symbol: string;
+  image: string;
+}
+
+interface MarketData {
+  price: number;
+  market_cap: number;
+  price_change_24h?: number;
+}
+
+interface HeldToken {
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  balance: string;
+  usdValue: string;
+  usdValueNumber: number; // For sorting
+  image?: string;
+}
+
+interface ClaimableToken {
+  id: string;
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  balance: string;
+  usdValue: string;
+  usdValueNumber: number;
+  claimLabel: string;
+  image?: string;
+}
+
+interface CreatedToken {
+  id: string;
+  name: string;
+  symbol: string;
+  tokenAddress: string;
+  claimLabel: string;
+  socialsLabel: string;
+  image?: string;
+  socials: {
+    website?: string;
+    twitter?: string;
+    devTwitter?: string;
+    discord?: string;
+    github?: string;
+    devGithub?: string;
+  };
+}
+
+export default function PortfolioPage() {
+  const { wallet, externalWallet, activeWallet } = useWallet();
+  const { signTransaction } = useSignTransaction();
+  const { theme } = useTheme();
+  const cardBg = theme === 'dark' ? '#222222' : '#ffffff';
+  const cardBorder = theme === 'dark' ? '#1C1C1C' : '#e5e5e5';
+  const cardShadow = theme === 'dark'
+    ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)'
+    : '0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)';
+  const primaryTextColor = theme === 'dark' ? '#ffffff' : '#0a0a0a';
+  const secondaryTextColor = theme === 'dark' ? '#B8B8B8' : '#717182';
+
+  const [activeTab, setActiveTab] = useState<'held' | 'created'>('held');
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [tokens, setTokens] = useState<TokenLaunch[]>([]);
+  const [heldTokens, setHeldTokens] = useState<HeldToken[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [tokenMetadata, setTokenMetadata] = useState<Record<string, TokenMetadata>>({});
+  const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
+  const [claimableTokens, setClaimableTokens] = useState<ClaimableToken[]>([]);
+  const [claiming, setClaiming] = useState<Record<string, boolean>>({});
+
+  const [createdTokens, setCreatedTokens] = useState<CreatedToken[]>([]);
+  const [editingSocialsTokenId, setEditingSocialsTokenId] = useState<string | null>(null);
+  const [socialsForm, setSocialsForm] = useState({
+    website: '',
+    twitter: '',
+    devTwitter: '',
+    discord: '',
+    github: '',
+    devGithub: ''
+  });
+
+  // Fetch all ZC tokens
+  useEffect(() => {
+    const fetchTokens = async () => {
+      try {
+        const response = await fetch('/api/tokens', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ refresh: false })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setTokens(data.tokens || []);
+
+          // Fetch metadata for all tokens
+          (data.tokens || []).forEach((token: TokenLaunch) => {
+            if (token.token_metadata_url) {
+              fetch(token.token_metadata_url)
+                .then(res => res.json())
+                .then(metadata => {
+                  setTokenMetadata(prev => ({
+                    ...prev,
+                    [token.token_address]: metadata
+                  }));
+                })
+                .catch(err => console.error(`Error fetching metadata for ${token.token_address}:`, err));
+            }
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching tokens:', error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchTokens();
+  }, []);
+
+  // Fetch balances for all tokens when wallet is connected
+  useEffect(() => {
+    // Show mock data when wallet is not connected (for demonstration)
+    if (!wallet) {
+      setHeldTokens([]);
+      setClaimableTokens([]);
+      setLoading(false);
+      return;
+    }
+
+    if (tokens.length === 0) {
+      setHeldTokens([]);
+      return;
+    }
+
+    const fetchBalances = async () => {
+      setLoading(true);
+      const walletAddress = wallet.toString();
+      const tokensWithBalances: HeldToken[] = [];
+
+      // Fetch balances in batches
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+        const batch = tokens.slice(i, i + BATCH_SIZE);
+        
+        const balancePromises = batch.map(async (token) => {
+          try {
+            const balanceResponse = await fetch(`/api/balance/${token.token_address}/${walletAddress}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tokenAddress: token.token_address,
+                walletAddress: walletAddress
+              })
+            });
+
+            if (balanceResponse.ok) {
+              const balanceData = await balanceResponse.json();
+              const balance = parseFloat(balanceData.balance || '0');
+
+              // Only include tokens with balance > 0
+              if (balance > 0) {
+                const metadata = tokenMetadata[token.token_address];
+                const name = metadata?.name || token.token_name || 'Unknown Token';
+                const symbol = metadata?.symbol || token.token_symbol || 'UNKNOWN';
+                const image = metadata?.image;
+
+                  // Fetch market data for USD value calculation
+                let usdValue = '$0 USD';
+                let usdValueNumber = 0;
+                try {
+                  const marketResponse = await fetch(`/api/market-data/${token.token_address}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tokenAddress: token.token_address })
+                  });
+
+                  if (marketResponse.ok) {
+                    const marketResult = await marketResponse.json();
+                    if (marketResult.success && marketResult.data) {
+                      const price = marketResult.data.price || 0;
+                      usdValueNumber = balance * price;
+                      usdValue = `$${usdValueNumber.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+                    }
+                  }
+                } catch (error) {
+                  console.error(`Error fetching market data for ${token.token_address}:`, error);
+                }
+
+                // Format balance
+                const formattedBalance = formatBalance(balance);
+
+                const heldToken: HeldToken = {
+                  tokenAddress: token.token_address,
+                  name,
+                  symbol,
+                  balance: formattedBalance,
+                  usdValue,
+                  usdValueNumber,
+                  image
+                };
+                return heldToken;
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching balance for ${token.token_address}:`, error);
+          }
+          return null;
+        });
+
+        const results = await Promise.all(balancePromises);
+        const validTokens = results.filter((token): token is HeldToken => token !== null);
+        tokensWithBalances.push(...validTokens);
+      }
+
+      // Sort tokens by USD value (descending - highest first)
+      tokensWithBalances.sort((a, b) => {
+        return b.usdValueNumber - a.usdValueNumber; // Descending order (highest USD value first)
+      });
+
+      setHeldTokens(tokensWithBalances);
+      setLoading(false);
+    };
+
+    fetchBalances();
+  }, [wallet, tokens, tokenMetadata]);
+
+  const formatBalance = (balance: number): string => {
+    if (balance >= 1_000_000) {
+      return `${(balance / 1_000_000).toFixed(2)}M`;
+    } else if (balance >= 1_000) {
+      return `${(balance / 1_000).toFixed(2)}K`;
+    }
+    return balance.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  };
+
+  const formatAddress = (address: string): string => {
+    if (!address) return '';
+    const start = address.slice(0, 4);
+    const end = address.slice(-4);
+    return `${start}...${end}`;
+  };
+
+  const handleCopyAddress = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(address);
+      setTimeout(() => setCopiedAddress(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy address:', error);
+    }
+  };
+
+  const handleClaim = async (tokenAddress: string, tokenSymbol: string) => {
+    if (!wallet || !activeWallet) {
+      alert('Please connect your wallet to claim tokens');
+      return;
+    }
+
+    try {
+      setClaiming(prev => ({ ...prev, [tokenAddress]: true }));
+
+      // Step 1: Get claim info
+      const claimInfoResponse = await fetch(`/api/claims/${tokenAddress}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokenAddress,
+          wallet: wallet.toString()
+        })
+      });
+
+      const claimInfoData: ClaimInfoResult = await claimInfoResponse.json();
+
+      if (!claimInfoResponse.ok || !isClaimInfoResponse(claimInfoData)) {
+        const errorMsg = isApiError(claimInfoData) ? claimInfoData.error : 'Failed to fetch claim info';
+        alert(errorMsg);
+        return;
+      }
+
+      if (!claimInfoData.canClaimNow) {
+        alert(`Tokens are not yet available to claim. ${claimInfoData.timeUntilNextClaim ? `Available in ${claimInfoData.timeUntilNextClaim}` : ''}`);
+        return;
+      }
+
+      const claimAmount = claimInfoData.availableToClaim;
+
+      if (BigInt(claimAmount) <= 0) {
+        alert('No tokens available to claim');
+        return;
+      }
+
+      // Step 2: Get mint transaction from server
+      const mintRequest: MintClaimRequest = {
+        tokenAddress,
+        userWallet: wallet.toString(),
+        claimAmount
+      };
+
+      const mintResponse = await fetch('/api/claims/mint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mintRequest)
+      });
+
+      const mintData: MintClaimResult = await mintResponse.json();
+
+      if (!mintResponse.ok || !isMintClaimResponse(mintData)) {
+        const errorMsg = isApiError(mintData) ? mintData.error : 'Failed to create mint transaction';
+        alert(errorMsg);
+        return;
+      }
+
+      // Step 3: Deserialize and sign transaction
+      const transactionBuffer = bs58.decode(mintData.transaction);
+      const transaction = Transaction.from(transactionBuffer);
+
+      const serializedTransaction = transaction.serialize({
+        requireAllSignatures: false,
+        verifySignatures: false
+      });
+
+      const { signedTransaction } = await signTransaction({
+        transaction: serializedTransaction,
+        wallet: activeWallet
+      });
+
+      const userSignedTransaction = Transaction.from(signedTransaction);
+
+      // Step 4: Send signed transaction to server for protocol signing and submission
+      const confirmRequest: ConfirmClaimRequest = {
+        signedTransaction: bs58.encode(userSignedTransaction.serialize({
+          requireAllSignatures: false,
+          verifySignatures: false
+        })),
+        transactionKey: mintData.transactionKey
+      };
+
+      const submitResponse = await fetch('/api/claims/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(confirmRequest)
+      });
+
+      const submitData: ConfirmClaimResult = await submitResponse.json();
+
+      if (!submitResponse.ok || !isConfirmClaimResponse(submitData)) {
+        const errorMsg = isApiError(submitData) ? submitData.error : 'Failed to confirm claim transaction';
+        alert(errorMsg);
+        return;
+      }
+
+      alert(`Successfully claimed ${tokenSymbol} tokens!`);
+      
+      // Refresh held tokens to show updated balance
+      if (wallet) {
+        // Trigger a refresh of held tokens
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Error claiming tokens:', error);
+      alert(`Failed to claim tokens: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setClaiming(prev => ({ ...prev, [tokenAddress]: false }));
+    }
+  };
+
+  const handleOpenSocialsModal = (token: CreatedToken) => {
+    setEditingSocialsTokenId(token.id);
+    setSocialsForm({
+      website: token.socials.website || '',
+      twitter: token.socials.twitter || '',
+      devTwitter: token.socials.devTwitter || '',
+      discord: token.socials.discord || '',
+      github: token.socials.github || '',
+      devGithub: token.socials.devGithub || ''
+    });
+  };
+
+  const handleCloseSocialsModal = () => {
+    setEditingSocialsTokenId(null);
+  };
+
+  const handleSocialsInputChange = (field: keyof typeof socialsForm, value: string) => {
+    setSocialsForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
+  };
+
+  const handleConfirmSocialsEdit = () => {
+    if (!editingSocialsTokenId) return;
+
+    setCreatedTokens(prev =>
+      prev.map(token =>
+        token.id === editingSocialsTokenId
+          ? {
+              ...token,
+              socials: {
+                ...token.socials,
+                ...socialsForm
+              }
+            }
+          : token
+      )
+    );
+
+    setEditingSocialsTokenId(null);
+  };
+
+  const editingSocialsToken = editingSocialsTokenId
+    ? createdTokens.find(token => token.id === editingSocialsTokenId) ?? null
+    : null;
+
+  return (
+    <div className="flex-1" style={{ padding: '20px 40px', marginLeft: '-20px', marginRight: '-20px' }}>
+      <div className="flex flex-col gap-[20px] w-full">
+      {/* Token Filters (Tabs) */}
+      <div className="flex gap-[12px] items-start">
+        <button
+          onClick={() => setActiveTab('held')}
+          className="rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-colors"
+          style={{
+            fontFamily: 'Inter, sans-serif',
+            backgroundColor: activeTab === 'held'
+              ? (theme === 'dark' ? '#5A5798' : '#403d6d')
+              : (theme === 'dark' ? '#222222' : '#ffffff'),
+            border: activeTab === 'held' ? 'none' : (theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5'),
+            color: activeTab === 'held' ? '#ffffff' : (theme === 'dark' ? '#ffffff' : '#0a0a0a')
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'held') {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#f6f6f7';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'held') {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#222222' : '#ffffff';
+            }
+          }}
+        >
+          Held Tokens
+        </button>
+        <button
+          onClick={() => setActiveTab('created')}
+          className="rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-colors"
+          style={{
+            fontFamily: 'Inter, sans-serif',
+            backgroundColor: activeTab === 'created'
+              ? (theme === 'dark' ? '#5A5798' : '#403d6d')
+              : (theme === 'dark' ? '#222222' : '#ffffff'),
+            border: activeTab === 'created' ? 'none' : (theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5'),
+            color: activeTab === 'created' ? '#ffffff' : (theme === 'dark' ? '#ffffff' : '#0a0a0a')
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'created') {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#f6f6f7';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'created') {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#222222' : '#ffffff';
+            }
+          }}
+        >
+          Created tokens
+        </button>
+      </div>
+
+      {editingSocialsToken && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-[rgba(10,10,10,0.4)] px-5">
+          <div 
+            className="rounded-[16px] w-full max-w-[520px] px-[28px] py-[32px] flex flex-col gap-[24px]"
+            style={{
+              backgroundColor: theme === 'dark' ? '#292929' : '#ffffff',
+              border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+              boxShadow: theme === 'dark' 
+                ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)'
+                : '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            }}
+          >
+            <div className="flex items-start justify-between">
+              <div className="flex flex-col gap-[4px]">
+                <h2 className="text-[20px] font-semibold leading-[1.34] tracking-[-0.2px]" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Edit socials
+                </h2>
+                <p className="text-[14px] leading-[1.6]" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#B8B8B8' : '#717182' }}>
+                  Update public links for {editingSocialsToken?.name ?? 'your project'}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseSocialsModal}
+                className="w-[32px] h-[32px] flex items-center justify-center rounded-full transition-colors"
+                style={{
+                  backgroundColor: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#f6f6f7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                aria-label="Close socials editor"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18" stroke={theme === 'dark' ? '#ffffff' : '#717182'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M6 6L18 18" stroke={theme === 'dark' ? '#ffffff' : '#717182'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-[16px]">
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Website
+                </label>
+                <TextInput
+                  placeholder="https://yourproject.io"
+                  value={socialsForm.website}
+                  onChange={event => handleSocialsInputChange('website', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  X (Twitter)
+                </label>
+                <TextInput
+                  placeholder="https://x.com/username"
+                  value={socialsForm.twitter}
+                  onChange={event => handleSocialsInputChange('twitter', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Dev X profile
+                </label>
+                <TextInput
+                  placeholder="https://x.com/dev"
+                  value={socialsForm.devTwitter}
+                  onChange={event => handleSocialsInputChange('devTwitter', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Discord
+                </label>
+                <TextInput
+                  placeholder="https://discord.gg/your-server"
+                  value={socialsForm.discord}
+                  onChange={event => handleSocialsInputChange('discord', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  GitHub
+                </label>
+                <TextInput
+                  placeholder="https://github.com/your-project"
+                  value={socialsForm.github}
+                  onChange={event => handleSocialsInputChange('github', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Dev GitHub profile
+                </label>
+                <TextInput
+                  placeholder="https://github.com/your-handle"
+                  value={socialsForm.devGithub}
+                  onChange={event => handleSocialsInputChange('devGithub', event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-[12px]">
+              <button
+                type="button"
+                onClick={handleCloseSocialsModal}
+                className="rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-colors"
+                style={{
+                  fontFamily: 'Inter, sans-serif',
+                  backgroundColor: theme === 'dark' ? '#2a2a2a' : '#ffffff',
+                  border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+                  color: theme === 'dark' ? '#ffffff' : '#0a0a0a',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = theme === 'dark' ? '#303030' : '#f6f6f7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#ffffff';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSocialsEdit}
+                className="rounded-[6px] px-[16px] py-[12px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-opacity hover:opacity-90"
+                style={{
+                  fontFamily: 'Inter, sans-serif',
+                  backgroundColor: theme === 'dark' ? '#5A5798' : '#403d6d',
+                  color: '#ffffff',
+                }}
+              >
+                Confirm edit
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Token List */}
+      <div className="flex flex-col gap-[12px] w-full">
+        {activeTab === 'held' && (
+          <>
+            {loading ? (
+              <div className="bg-[#ffffff] border border-[#e5e5e5] rounded-[12px] px-[12px] py-[20px] flex items-center justify-center min-h-[100px]">
+                <p className="text-[14px] text-[#717182]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  Loading tokens...
+                </p>
+              </div>
+            ) : heldTokens.length === 0 ? (
+              <div className="bg-[#ffffff] border border-[#e5e5e5] rounded-[12px] px-[12px] py-[20px] flex items-center justify-center min-h-[100px]">
+                <p className="text-[14px] text-[#717182]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  No ZC tokens found in your wallet
+                </p>
+              </div>
+            ) : (
+              <>
+                {claimableTokens.length > 0 && claimableTokens.map((token) => (
+                  <div
+                    key={`claimable-${token.id}`}
+                    className="border rounded-[12px] px-[12px] py-[20px] flex flex-col gap-[10px]"
+                    style={{
+                      background: theme === 'dark' ? 'linear-gradient(103deg, #2E1F69 13.26%, #944FF4 93.84%)' : 'linear-gradient(103deg, #B09EFA 13.26%, #6A6DE8 93.84%)',
+                      border: `1px solid ${theme === 'dark' ? '#1C1C1C' : '#e5e5e5'}`,
+                      boxShadow: theme === 'dark' ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)',
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                  >
+                    <div className="flex gap-[72px] items-center pl-[12px] pr-[20px]">
+                      <div className="flex gap-[14px] items-center">
+                        <div className="bg-[#030213] rounded-[12px] w-[42px] h-[42px] flex items-center justify-center shrink-0 overflow-hidden">
+                          {token.image ? (
+                            <Image
+                              src={token.image}
+                              alt={token.name}
+                              width={30}
+                              height={30}
+                              className="w-[30px] h-[30px]"
+                            />
+                          ) : (
+                            <Image
+                              src="/logos/z-logo-white.png"
+                              alt="Token"
+                              width={30}
+                              height={30}
+                              className="w-[30px] h-[30px]"
+                            />
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-[8px] w-[148px]">
+                          <div className="flex gap-[6px] items-center text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                            <p className="whitespace-nowrap" style={{ color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>{token.name}</p>
+                            <p className="uppercase whitespace-nowrap" style={{ color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>{token.symbol}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyAddress(token.tokenAddress)}
+                            className="flex gap-[4px] items-center cursor-pointer group"
+                            title="Click to copy address"
+                            style={{ fontFamily: 'Inter, sans-serif' }}
+                          >
+                            <p className="text-[14px] font-medium leading-[14px] capitalize transition-opacity group-hover:opacity-80" style={{ color: secondaryTextColor }}>
+                              {formatAddress(token.tokenAddress)}
+                            </p>
+                            {copiedAddress === token.tokenAddress ? (
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                                <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="#327755" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 transition-opacity group-hover:opacity-80">
+                                <path d="M15.002 6.96045L15 4.60049C15 4.44136 14.9368 4.28875 14.8243 4.17622C14.7117 4.0637 14.5591 4.00049 14.4 4.00049H4.6C4.44087 4.00049 4.28826 4.0637 4.17574 4.17622C4.06321 4.28875 4 4.44136 4 4.60049V14.4005C4 14.5596 4.06321 14.7122 4.17574 14.8248C4.28826 14.9373 4.44087 15.0005 4.6 15.0005H7.00195M19.4 20.0005H9.6C9.44087 20.0005 9.28826 19.9373 9.17574 19.8248C9.06321 19.7122 9 19.5596 9 19.4005V9.60049C9 9.44136 9.06321 9.28875 9.17574 9.17622C9.28826 9.0637 9.44087 9.00049 9.6 9.00049H19.4C19.5591 9.00049 19.7117 9.0637 19.8243 9.17622C19.9368 9.28875 20 9.44136 20 9.60049V19.4005C20 19.5596 19.9368 19.7122 19.8243 19.8248C19.7117 19.9373 19.5591 20.0005 19.4 20.0005Z" stroke={secondaryTextColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-[10px] items-start">
+                        <div className="flex gap-[6px] items-center">
+                          <p className="text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif', color: primaryTextColor }}>
+                            {token.balance} ${token.symbol}
+                          </p>
+                        </div>
+                        <p className="text-[14px] font-medium leading-[14px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? secondaryTextColor : '#717182' }}>
+                          {token.usdValue}
+                        </p>
+                      </div>
+
+                      <div className="flex gap-[12px] items-center ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => handleClaim(token.tokenAddress, token.symbol)}
+                          disabled={claiming[token.tokenAddress] || !wallet}
+                          className="bg-[#403d6d] rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize text-white transition-opacity hover:opacity-90 disabled:bg-[#403d6d] disabled:text-white disabled:opacity-100 disabled:cursor-default disabled:hover:opacity-90"
+                          style={{ fontFamily: 'Inter, sans-serif' }}
+                        >
+                          {claiming[token.tokenAddress] ? 'Claiming...' : token.claimLabel}
+                        </button>
+                        <p className="max-w-[260px] text-[12px] leading-[16px]" style={{ fontFamily: 'Inter, sans-serif', color: '#ffffff' }}>
+                          You have unclaimed contributor rewards. Claim to instantly add tokens to your wallet.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {heldTokens.map((token) => (
+                  <div
+                    key={token.tokenAddress}
+                    className="rounded-[12px] px-[12px] py-[20px] flex flex-col gap-[10px]"
+                    style={{
+                      backgroundColor: cardBg,
+                      border: `1px solid ${cardBorder}`,
+                      boxShadow: cardShadow,
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                  >
+                    <div className="flex gap-[72px] items-center pl-[12px] pr-[20px]">
+                      {/* Token Info */}
+                      <div className="flex gap-[14px] items-center">
+                        {/* Token Icon */}
+                        <div className="bg-[#030213] rounded-[12px] w-[42px] h-[42px] flex items-center justify-center shrink-0 overflow-hidden">
+                          {token.image ? (
+                            <img
+                              src={token.image}
+                              alt={token.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Image
+                              src="/logos/z-logo-white.png"
+                              alt="Token"
+                              width={30}
+                              height={30}
+                              className="w-[30px] h-[30px]"
+                            />
+                          )}
+                        </div>
+
+                        {/* Token Text */}
+                        <div className="flex flex-col gap-[8px] w-[148px]">
+                          {/* Token Name */}
+                          <div className="flex gap-[6px] items-center text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                            <p className="whitespace-nowrap" style={{ color: primaryTextColor }}>{token.name}</p>
+                            <p className="uppercase whitespace-nowrap" style={{ color: secondaryTextColor }}>{token.symbol}</p>
+                          </div>
+
+                          {/* Token Address */}
+                          <div className="flex gap-[4px] items-center">
+                            <button
+                              onClick={() => handleCopyAddress(token.tokenAddress)}
+                              className="flex gap-[4px] items-center cursor-pointer group"
+                              style={{ fontFamily: 'Inter, sans-serif' }}
+                              title="Click to copy address"
+                            >
+                              <p className="text-[14px] font-medium leading-[14px] capitalize transition-opacity group-hover:opacity-80" style={{ color: secondaryTextColor }}>
+                                {formatAddress(token.tokenAddress)}
+                              </p>
+                              {copiedAddress === token.tokenAddress ? (
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                                  <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="#327755" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 transition-opacity group-hover:opacity-80">
+                                  <path d="M15.002 6.96045L15 4.60049C15 4.44136 14.9368 4.28875 14.8243 4.17622C14.7117 4.0637 14.5591 4.00049 14.4 4.00049H4.6C4.44087 4.00049 4.28826 4.0637 4.17574 4.17622C4.06321 4.28875 4 4.44136 4 4.60049V14.4005C4 14.5596 4.06321 14.7122 4.17574 14.8248C4.28826 14.9373 4.44087 15.0005 4.6 15.0005H7.00195M19.4 20.0005H9.6C9.44087 20.0005 9.28826 19.9373 9.17574 19.8248C9.06321 19.7122 9 19.5596 9 19.4005V9.60049C9 9.44136 9.06321 9.28875 9.17574 9.17622C9.28826 9.0637 9.44087 9.00049 9.6 9.00049H19.4C19.5591 9.00049 19.7117 9.0637 19.8243 9.17622C19.9368 9.28875 20 9.44136 20 9.60049V19.4005C20 19.5596 19.9368 19.7122 19.8243 19.8248C19.7117 19.9373 19.5591 20.0005 19.4 20.0005Z" stroke={secondaryTextColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Token Value */}
+                      <div className="flex gap-[8px] items-center">
+                        <div className="flex flex-col gap-[8px]">
+                          <div className="flex flex-col gap-[10px]">
+                            <div className="flex gap-[6px] items-center">
+                              <p className="text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif', color: primaryTextColor }}>
+                                {token.balance} ${token.symbol}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-[14px] font-medium leading-[14px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: secondaryTextColor }}>
+                            {token.usdValue}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
+
+        {activeTab === 'created' && (
+          <>
+            {createdTokens.length === 0 ? (
+              <div
+                className="rounded-[12px] px-[12px] py-[20px] flex items-center justify-center min-h-[100px]"
+                style={{
+                  backgroundColor: cardBg,
+                  border: `1px solid ${cardBorder}`,
+                  boxShadow: cardShadow,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                <p className="text-[14px]" style={{ fontFamily: 'Inter, sans-serif', color: secondaryTextColor }}>
+                  No created tokens yet
+                </p>
+              </div>
+            ) : (
+              createdTokens.map((token) => (
+                <div
+                  key={token.id}
+                  className="rounded-[12px] px-[12px] py-[20px] flex flex-col gap-[10px]"
+                  style={{
+                    backgroundColor: cardBg,
+                    border: `1px solid ${cardBorder}`,
+                    boxShadow: cardShadow,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-[20px] pl-[12px] pr-[20px]">
+                    <div className="flex gap-[14px] items-center">
+                      <div className="bg-[#030213] rounded-[12px] w-[42px] h-[42px] flex items-center justify-center shrink-0 overflow-hidden">
+                        {token.image ? (
+                          <Image
+                            src={token.image}
+                            alt={token.name}
+                            width={30}
+                            height={30}
+                            className="w-[30px] h-[30px]"
+                          />
+                        ) : (
+                          <div className="w-[30px] h-[30px] rounded-[8px] bg-[#403d6d]" />
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-[8px] w-[148px]">
+                        <div className="flex gap-[6px] items-center text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                          <p className="whitespace-nowrap" style={{ color: primaryTextColor }}>{token.name}</p>
+                          <p className="uppercase whitespace-nowrap" style={{ color: secondaryTextColor }}>{token.symbol}</p>
+                        </div>
+                        <div className="flex gap-[4px] items-center">
+                          <button
+                            type="button"
+                            onClick={() => handleCopyAddress(token.tokenAddress)}
+                            className="flex gap-[4px] items-center cursor-pointer group"
+                            style={{ fontFamily: 'Inter, sans-serif' }}
+                            title="Click to copy address"
+                          >
+                            <p className="text-[14px] font-medium leading-[14px] capitalize transition-opacity group-hover:opacity-80" style={{ color: secondaryTextColor }}>
+                              {formatAddress(token.tokenAddress)}
+                            </p>
+                            {copiedAddress === token.tokenAddress ? (
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                                <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="#327755" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 transition-opacity group-hover:opacity-80">
+                                <path d="M15.002 6.96045L15 4.60049C15 4.44136 14.9368 4.28875 14.8243 4.17622C14.7117 4.0637 14.5591 4.00049 14.4 4.00049H4.6C4.44087 4.00049 4.28826 4.0637 4.17574 4.17622C4.06321 4.28875 4 4.44136 4 4.60049V14.4005C4 14.5596 4.06321 14.7122 4.17574 14.8248C4.28826 14.9373 4.44087 15.0005 4.6 15.0005H7.00195M19.4 20.0005H9.6C9.44087 20.0005 9.28826 19.9373 9.17574 19.8248C9.06321 19.7122 9 19.5596 9 19.4005V9.60049C9 9.44136 9.06321 9.28875 9.17574 9.17622C9.28826 9.0637 9.44087 9.00049 9.6 9.00049H19.4C19.5591 9.00049 19.7117 9.0637 19.8243 9.17622C19.9368 9.28875 20 9.44136 20 9.60049V19.4005C20 19.5596 19.9368 19.7122 19.8243 19.8248C19.7117 19.9373 19.5591 20.0005 19.4 20.0005Z" stroke={secondaryTextColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-[20px]">
+                      <button
+                        type="button"
+                        className="bg-[#403d6d] rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize text-white transition-opacity hover:opacity-90"
+                        style={{ fontFamily: 'Inter, sans-serif' }}
+                      >
+                        {token.claimLabel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSocialsModal(token)}
+                        className="rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-colors"
+                        style={{
+                          fontFamily: 'Inter, sans-serif',
+                          backgroundColor: theme === 'dark' ? '#2a2a2a' : '#ffffff',
+                          border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+                          color: theme === 'dark' ? '#ffffff' : '#0a0a0a',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (theme === 'dark') {
+                            e.currentTarget.style.backgroundColor = '#303030';
+                          } else {
+                            e.currentTarget.style.backgroundColor = '#f6f6f7';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#ffffff';
+                        }}
+                      >
+                        {token.socialsLabel}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))
+            )}
+          </>
+        )}
+      </div>
+      </div>
+    </div>
+  );
+}

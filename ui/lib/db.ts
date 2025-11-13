@@ -29,6 +29,7 @@ import type {
   PresaleBid,
   PresaleClaim,
   PresaleClaimTransaction,
+  Contribution,
 } from './db/types';
 import * as emissionSplitsModule from './db/emission-splits';
 import * as presalesModule from './db/presales';
@@ -46,11 +47,35 @@ export type {
   PresaleBid,
   PresaleClaim,
   PresaleClaimTransaction,
+  Contribution,
 } from './db/types';
 
+// Mock database support
+import { shouldUseMockData, getMockDatabase } from './mock';
+
 let pool: Pool | null = null;
+let mockDb: ReturnType<typeof getMockDatabase> | null = null;
+
+// Check if we should use mock data
+function shouldUseMockDatabase(): boolean {
+  return shouldUseMockData();
+}
+
+// Get mock database instance
+function getMockDb() {
+  if (!mockDb) {
+    mockDb = getMockDatabase();
+  }
+  return mockDb;
+}
 
 export function getPool(): Pool {
+  // If in mock mode, return a dummy pool (won't actually be used)
+  if (shouldUseMockDatabase()) {
+    // Return a dummy pool object to prevent errors
+    return {} as Pool;
+  }
+
   if (!pool) {
     const dbUrl = process.env.DB_URL;
 
@@ -75,6 +100,11 @@ export function getPool(): Pool {
 
 
 export async function recordTokenLaunch(launch: Omit<TokenLaunch, 'id' | 'created_at' | 'launch_time'>): Promise<TokenLaunch> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().recordTokenLaunch(launch);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -123,6 +153,11 @@ export async function recordTokenLaunch(launch: Omit<TokenLaunch, 'id' | 'create
 }
 
 export async function getTokenLaunches(creatorWallet?: string, limit = 100): Promise<TokenLaunch[]> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getTokenLaunches(creatorWallet, limit);
+  }
+
   const pool = getPool();
 
   let query = `
@@ -152,6 +187,11 @@ export async function getTokenLaunches(creatorWallet?: string, limit = 100): Pro
 }
 
 export async function getTokenLaunchByAddress(tokenAddress: string): Promise<TokenLaunch | null> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getTokenLaunchByAddress(tokenAddress);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -169,6 +209,11 @@ export async function getTokenLaunchByAddress(tokenAddress: string): Promise<Tok
 }
 
 export async function getTokenLaunchesBySocials(twitterUsername?: string, githubUrl?: string, limit = 100): Promise<TokenLaunch[]> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getTokenLaunchesBySocials(twitterUsername, githubUrl, limit);
+  }
+
   const pool = getPool();
 
   if (!twitterUsername && !githubUrl) {
@@ -735,6 +780,63 @@ export async function hasRecentClaim(
 }
 
 /**
+ * Check if a SPECIFIC wallet has claimed this token within the specified time window
+ * Used for per-wallet claim cooldowns with emission splits
+ * Returns true if wallet has a recent claim, false otherwise
+ */
+export async function hasRecentClaimByWallet(
+  tokenAddress: string,
+  walletAddress: string,
+  minutesAgo: number = 360
+): Promise<boolean> {
+  const pool = getPool();
+
+  const query = `
+    SELECT COUNT(*) as count
+    FROM claim_records
+    WHERE token_address = $1
+      AND wallet_address = $2
+      AND confirmed_at > NOW() - INTERVAL '${minutesAgo} minutes'
+  `;
+
+  try {
+    const result = await pool.query(query, [tokenAddress, walletAddress]);
+    return parseInt(result.rows[0].count) > 0;
+  } catch (error) {
+    console.error('Error checking recent claims by wallet:', error);
+    // Fail safe - if we can't check, assume they have claimed
+    return true;
+  }
+}
+
+/**
+ * Get total amount claimed by a specific wallet for a token
+ * Used to calculate remaining claimable amount with emission splits
+ */
+export async function getTotalClaimedByWallet(
+  tokenAddress: string,
+  walletAddress: string
+): Promise<bigint> {
+  const pool = getPool();
+
+  const query = `
+    SELECT COALESCE(SUM(CAST(amount AS BIGINT)), 0) as total
+    FROM claim_records
+    WHERE token_address = $1
+      AND wallet_address = $2
+      AND confirmed_at IS NOT NULL
+  `;
+
+  try {
+    const result = await pool.query(query, [tokenAddress, walletAddress]);
+    return BigInt(result.rows[0].total);
+  } catch (error) {
+    console.error('Error getting total claimed by wallet:', error);
+    throw error;
+  }
+}
+
+/**
  * Pre-record a claim attempt in the database with a placeholder signature
  * This prevents double-claiming by creating the DB record BEFORE signing
  * Returns a unique claim ID that can be used to update the record later
@@ -810,6 +912,11 @@ export async function removeFailedClaim(claimId: string): Promise<void> {
 // Token Holders Management Functions
 
 export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder[]> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getTokenHolders(tokenAddress);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -828,6 +935,11 @@ export async function getTokenHolders(tokenAddress: string): Promise<TokenHolder
 }
 
 export async function upsertTokenHolder(holder: Omit<TokenHolder, 'id' | 'created_at' | 'updated_at'>): Promise<TokenHolder> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().upsertTokenHolder(holder);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -877,6 +989,11 @@ export async function batchUpsertTokenHolders(
   }>
 ): Promise<void> {
   if (holders.length === 0) return;
+
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().batchUpsertTokenHolders(tokenAddress, holders);
+  }
 
   const pool = getPool();
   const client = await pool.connect();
@@ -940,6 +1057,11 @@ export async function updateTokenHolderLabels(
     custom_label?: string | null;
   }
 ): Promise<TokenHolder | null> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().updateTokenHolderLabels(tokenAddress, walletAddress, labels);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -975,6 +1097,11 @@ export async function getTokenHolderStats(tokenAddress: string): Promise<{
   totalBalance: string;
   lastSyncTime: Date | null;
 }> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getTokenHolderStats(tokenAddress);
+  }
+
   const pool = getPool();
 
   const query = `
@@ -1326,6 +1453,10 @@ export async function createPresale(presale: Omit<Presale, 'id' | 'created_at' |
 }
 
 export async function getPresaleByTokenAddress(tokenAddress: string): Promise<Presale | null> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getPresaleByTokenAddress(tokenAddress);
+  }
   return presalesModule.getPresaleByTokenAddress(getPool(), tokenAddress);
 }
 
@@ -1339,6 +1470,13 @@ export async function updatePresaleStatus(
 }
 
 export async function getPresalesByCreatorWallet(creatorWallet: string, limit = 100): Promise<Presale[]> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    // Filter mock presales by creator wallet
+    const { MOCK_PRESALES } = await import('./mock/mockData');
+    return MOCK_PRESALES.filter(p => p.creator_wallet === creatorWallet).slice(0, limit);
+  }
+
   return presalesModule.getPresalesByCreatorWallet(getPool(), creatorWallet, limit);
 }
 
@@ -1351,6 +1489,10 @@ export async function getPresaleBidBySignature(transactionSignature: string): Pr
 }
 
 export async function getPresaleBids(tokenAddress: string): Promise<PresaleBid[]> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getPresaleBids(tokenAddress);
+  }
   return presalesModule.getPresaleBids(getPool(), tokenAddress);
 }
 
@@ -1358,6 +1500,10 @@ export async function getTotalPresaleBids(tokenAddress: string): Promise<{
   totalBids: number;
   totalAmount: bigint;
 }> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getTotalPresaleBids(tokenAddress);
+  }
   return presalesModule.getTotalPresaleBids(getPool(), tokenAddress);
 }
 
@@ -1365,6 +1511,10 @@ export async function getUserPresaleContribution(
   tokenAddress: string,
   walletAddress: string
 ): Promise<bigint> {
+  // Use mock database if enabled
+  if (shouldUseMockDatabase()) {
+    return getMockDb().getUserPresaleContribution(tokenAddress, walletAddress);
+  }
   return presalesModule.getUserPresaleContribution(getPool(), tokenAddress, walletAddress);
 }
 
@@ -1457,4 +1607,30 @@ export async function hasClaimRights(
 
 export async function getTokensWithClaimRights(walletAddress: string): Promise<TokenLaunch[]> {
   return emissionSplitsModule.getTokensWithClaimRights(getPool(), walletAddress);
+}
+
+// Contributions
+export async function getContributions(): Promise<Contribution[]> {
+  const pool = getPool();
+
+  const query = `
+    SELECT
+      id,
+      discord_id,
+      pr,
+      reward_zc,
+      reward_usd,
+      time,
+      created_at
+    FROM zc_contributions
+    ORDER BY time DESC
+  `;
+
+  try {
+    const result = await pool.query(query);
+    return result.rows;
+  } catch (error) {
+    console.error('Error fetching contributions:', error);
+    throw error;
+  }
 }

@@ -17,10 +17,18 @@ export function PrivyProviderWrapper({ children }: PrivyProviderWrapperProps) {
 
   // Privy App ID from environment variable
   const appId = process.env.NEXT_PUBLIC_PRIVY_APP_ID;
+  const isDev = process.env.NODE_ENV === 'development';
 
   if (!appId) {
-    console.error('NEXT_PUBLIC_PRIVY_APP_ID is not set');
-    return <div>Privy App ID is not configured</div>;
+    if (isDev) {
+      console.warn('NEXT_PUBLIC_PRIVY_APP_ID is not set. Wallet connection will not work in dev mode.');
+      // In dev mode, render children without PrivyProvider
+      return <>{children}</>;
+    } else {
+      // In production, show error
+      console.error('NEXT_PUBLIC_PRIVY_APP_ID is not set');
+      return <div>Privy App ID is not configured</div>;
+    }
   }
 
   return (
