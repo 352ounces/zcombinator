@@ -631,20 +631,46 @@ router.post('/confirm', feeClaimLimiter, async (req: Request, res: Response) => 
       if (programId.equals(TOKEN_PROGRAM_ID)) {
         const opcode = instruction.data[0];
 
-        // Allow Transfer (3) and TransferChecked (12) opcodes only
-        if (opcode !== 3 && opcode !== 12) {
+        // Allow Transfer (3), CloseAccount (9), and TransferChecked (12) opcodes only
+        if (opcode !== 3 && opcode !== 9 && opcode !== 12) {
           return res.status(400).json({
             error: 'Invalid transaction: unauthorized token instruction detected',
-            details: `Instruction ${i} has invalid opcode: ${opcode}. Only Transfer (3) and TransferChecked (12) allowed.`
+            details: `Instruction ${i} has invalid opcode: ${opcode}. Only Transfer (3), CloseAccount (9), and TransferChecked (12) allowed.`
           });
+        }
+
+        // Validate CloseAccount instructions
+        if (opcode === 9) {
+          // CloseAccount: accounts are [account, destination, authority]
+          if (instruction.keys.length >= 3) {
+            const authority = instruction.keys[2].pubkey;
+            const destination = instruction.keys[1].pubkey;
+
+            // Authority must be LP owner
+            if (!authority.equals(lpOwnerAddress)) {
+              return res.status(400).json({
+                error: 'Invalid transaction: close account authority must be LP owner',
+                details: `Instruction ${i} authority ${authority.toBase58()} does not match LP owner ${lpOwnerAddress.toBase58()}`
+              });
+            }
+
+            // Destination for rent refund must be LP owner or destination address
+            if (!destination.equals(lpOwnerAddress) && !destination.equals(destinationAddress)) {
+              return res.status(400).json({
+                error: 'Invalid transaction: close account destination not authorized',
+                details: `Instruction ${i} destination ${destination.toBase58()} must be LP owner or destination address`
+              });
+            }
+          }
         }
 
         // Validate transfer instructions have correct authority (LP owner)
         // For Transfer: accounts are [source, destination, authority]
         // For TransferChecked: accounts are [source, mint, destination, authority]
-        const authorityIndex = opcode === 3 ? 2 : 3;
+        if (opcode === 3 || opcode === 12) {
+          const authorityIndex = opcode === 3 ? 2 : 3;
 
-        if (instruction.keys.length > authorityIndex) {
+          if (instruction.keys.length > authorityIndex) {
           const authority = instruction.keys[authorityIndex].pubkey;
 
           if (!authority.equals(lpOwnerAddress)) {
@@ -705,6 +731,7 @@ router.post('/confirm', feeClaimLimiter, async (req: Request, res: Response) => 
                 details: `Instruction ${i} amount ${transferAmount.toString()} exceeds Token B fees ${maxTokenBFees.toString()}`
               });
             }
+          }
           }
         }
       }
