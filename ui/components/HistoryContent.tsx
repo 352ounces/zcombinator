@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useWallet } from '@/components/WalletProvider';
 import { useLaunchInfo, useTokenInfo, useDesignatedClaims, useTransactions } from '@/hooks/useTokenData';
+import { useTheme } from '@/contexts/ThemeContext';
 
 interface Transaction {
   signature: string;
@@ -42,6 +43,7 @@ interface HistoryContentProps {
 
 export function HistoryContent({ tokenAddress, tokenSymbol = '' }: HistoryContentProps) {
   const { wallet } = useWallet();
+  const { theme } = useTheme();
 
   // Use SWR hooks for cached data
   const { launchData, isLoading: launchLoading, mutate: mutateLaunch } = useLaunchInfo(tokenAddress);
@@ -278,10 +280,12 @@ export function HistoryContent({ tokenAddress, tokenSymbol = '' }: HistoryConten
   const getTransactionDescription = (tx: Transaction) => {
     switch (tx.type) {
       case 'transfer':
+        // Use toLabel if available, otherwise use truncated toWallet
+        const recipientLabel = tx.toLabel || truncateAddress(tx.toWallet);
         return {
           action: 'Reward',
           description: `${formatTokenAmount(tx.amount)} to `,
-          toUser: tx.toLabel,
+          toUser: recipientLabel,
           toUserIsSocial: isSocialLabel(tx.toLabel, tx.toWallet)
         };
       case 'mint':
@@ -374,214 +378,83 @@ export function HistoryContent({ tokenAddress, tokenSymbol = '' }: HistoryConten
     }
   };
 
+  // Calculate total pages for pagination display
+  const totalPages = hasMorePages ? currentPage + 2 : currentPage + 1;
+
+  // Format transaction description for display
+  const formatTransactionDescription = (tx: Transaction) => {
+    const desc = getTransactionDescription(tx);
+    const percentage = calculateSupplyPercentage(tx.amount);
+    // Always show recipient for transfer transactions, use toWallet if toLabel is empty
+    if (tx.type === 'transfer') {
+      const recipient = desc.toUser || truncateAddress(tx.toWallet);
+      return `${desc.description}${recipient} ( ${percentage}%)`;
+    } else if (desc.toUser) {
+      return `${desc.description}${desc.toUser} ( ${percentage}%)`;
+    } else {
+      return `${desc.description} ( ${percentage}%)`;
+    }
+  };
+
+  const cardBg = theme === 'dark' ? '#222222' : '#ffffff';
+  const cardBorder = theme === 'dark' ? '#1C1C1C' : '#e5e5e5';
+  const shadowStyle = theme === 'dark'
+    ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)'
+    : '0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)';
+  const textColor = theme === 'dark' ? '#ffffff' : '#0a0a0a';
+  const mutedTextColor = theme === 'dark' ? '#949494' : '#949494';
+
   return (
-    <div>
+    <div 
+      className="rounded-[12px] p-[20px] flex flex-col gap-[20px] items-start w-full h-full min-h-0" 
+      style={{ 
+        fontFamily: 'Inter, sans-serif',
+        backgroundColor: cardBg,
+        border: `1px solid ${cardBorder}`,
+        boxShadow: shadowStyle,
+      }}
+    >
       {/* Header */}
-      <h1 className="text-7xl font-bold">Txn History</h1>
-      <p className="mt-7 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-        {'//'}Transaction history for ${tokenInfo.symbol}
+      <p className="font-medium text-[20px] leading-[1.34] tracking-[-0.2px] shrink-0" style={{ fontFamily: 'Inter, sans-serif', color: textColor }}>
+        Dev TX History
       </p>
 
-      <div className="mt-5.5">
-        <div className="flex items-center gap-3 text-[14px]" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-          {tokenInfo.imageUri && (
-            <img
-              src={tokenInfo.imageUri}
-              alt={tokenInfo.symbol}
-              className="w-8 h-8 rounded-full"
-              onError={(e) => {
-                e.currentTarget.src = 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="gray"><circle cx="12" cy="12" r="10"/></svg>';
-              }}
-            />
-          )}
-          <span className="font-bold text-white">{tokenInfo.symbol}</span>
-          <span className="text-white">{tokenInfo.name}</span>
-          <span
-            onClick={() => {
-              navigator.clipboard.writeText(tokenInfo.address);
-            }}
-            className="text-gray-300 cursor-pointer hover:text-[#b2e9fe] transition-colors"
-            title="Click to copy full address"
-          >
-            {tokenInfo.address.slice(0, 6)}...{tokenInfo.address.slice(-6)}
-          </span>
-        </div>
-      </div>
-
-      {/* Refresh Button */}
-      {!loading && (
-        <div className="mt-5">
-          <button
-            onClick={() => {
-              // Clear local pagination state
-              setTransactionPages([]);
-              setCurrentPage(0);
-              setLastSignature(null);
-              // Revalidate all cached data
-              mutateLaunch();
-              mutateSupply();
-              mutateDesignated();
-              mutateTransactions();
-            }}
-            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-          >
-            [Refresh]
-          </button>
-        </div>
-      )}
-
-      {/* Transactions */}
+      {/* Transactions List */}
       {loading ? (
-        <p className="text-[14px] text-gray-300 mt-5.5" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-          [Loading...]
-        </p>
+        <div className="flex flex-col gap-[12px] flex-1 min-h-0 items-start w-full">
+          <p className="font-normal text-[14px] leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif', color: textColor }}>
+            Loading...
+          </p>
+        </div>
       ) : (
-        <div className="space-y-0 mt-6 max-w-2xl">
+        <div className="flex flex-col gap-[12px] flex-1 min-h-0 items-start overflow-y-auto w-full">
           {currentTransactions.length === 0 ? (
-            <p className="text-[14px] text-gray-300 text-center py-12" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
+            <p className="font-normal text-[14px] leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif', color: textColor }}>
               No transactions found
             </p>
           ) : (
             currentTransactions.map((tx: Transaction) => {
-              const isExpanded = expandedTransactions.has(tx.signature);
-              const hasMemo = tx.memo && tx.memo.trim().length > 0;
-
+              const desc = getTransactionDescription(tx);
               return (
-                <div key={tx.signature} className="pb-1">
-                  {/* Transaction Row - Desktop */}
-                  <div className="hidden md:flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <button
-                        onClick={() => {
-                          if (hasMemo) {
-                            const newExpanded = new Set(expandedTransactions);
-                            if (isExpanded) {
-                              newExpanded.delete(tx.signature);
-                            } else {
-                              newExpanded.add(tx.signature);
-                            }
-                            setExpandedTransactions(newExpanded);
-                          }
-                        }}
-                        className={`text-white ${hasMemo ? 'cursor-pointer hover:opacity-80' : 'cursor-default'} transition-opacity`}
-                        aria-label={hasMemo ? (isExpanded ? "Collapse memo" : "Expand memo") : tx.type}
-                        disabled={!hasMemo}
-                      >
-                        {getTypeIcon(tx.type)}
-                      </button>
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                          {(() => {
-                            const desc = getTransactionDescription(tx);
-                            return (
-                              <>
-                                <span className={getTypeColor(tx.type)}>{desc.action}</span>
-                                : {desc.description}
-                                {desc.toUser && (
-                                  <span className={desc.toUserIsSocial ? 'font-bold' : ''}>
-                                    {desc.toUser}
-                                  </span>
-                                )}
-                              </>
-                            );
-                          })()}
-                        </span>
-                        <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                          ({calculateSupplyPercentage(tx.amount)}%)
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                        {formatDate(tx.timestamp)}
-                      </span>
-                      <a
-                        href={`https://solscan.io/tx/${tx.signature}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                        title="View on Solscan"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </a>
-                    </div>
-                  </div>
-
-                  {/* Transaction Row - Mobile */}
-                  <div className="md:hidden">
-                    {/* First Row: Icon, Label with amount and "to who", Solscan link */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => {
-                            if (hasMemo) {
-                              const newExpanded = new Set(expandedTransactions);
-                              if (isExpanded) {
-                                newExpanded.delete(tx.signature);
-                              } else {
-                                newExpanded.add(tx.signature);
-                              }
-                              setExpandedTransactions(newExpanded);
-                            }
-                          }}
-                          className={`text-white ${hasMemo ? 'cursor-pointer hover:opacity-80' : 'cursor-default'} transition-opacity`}
-                          aria-label={hasMemo ? (isExpanded ? "Collapse memo" : "Expand memo") : tx.type}
-                          disabled={!hasMemo}
-                        >
-                          {getTypeIcon(tx.type)}
-                        </button>
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                            {(() => {
-                              const desc = getTransactionDescription(tx);
-                              return (
-                                <>
-                                  <span className={getTypeColor(tx.type)}>{desc.action}</span>
-                                  : {desc.description}
-                                  {desc.toUser && (
-                                    <span className={desc.toUserIsSocial ? 'font-bold' : ''}>
-                                      {desc.toUser}
-                                    </span>
-                                  )}
-                                </>
-                              );
-                            })()}
-                          </span>
-                          <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                            ({parseFloat(calculateSupplyPercentage(tx.amount)).toFixed(1)}%)
-                          </span>
-                        </div>
-                      </div>
-                      <a
-                        href={`https://solscan.io/tx/${tx.signature}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                        title="View on Solscan"
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </a>
-                    </div>
-                    {/* Second Row: Timestamp */}
-                    <div className="ml-8 mt-0.5">
-                      <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                        {formatDate(tx.timestamp)}
-                      </span>
-                    </div>
-                  </div>
-                  {/* Memo Expansion */}
-                  {hasMemo && isExpanded && (
-                    <div className="mt-3 ml-8 pl-4 border-l-2 border-gray-700">
-                      <p className="text-[14px] text-gray-300 italic" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                        {tx.memo}
-                      </p>
-                    </div>
-                  )}
+                <div key={tx.signature} className="flex gap-[40px] items-center w-full flex-shrink-0">
+                  {/* Transaction Type */}
+                  <p className="font-semibold text-[16px] leading-[16px] tracking-[0.32px] capitalize min-w-[68px] shrink-0" style={{ fontFamily: 'Inter, sans-serif', color: textColor }}>
+                    {desc.action}:
+                  </p>
+                  {/* Transaction Description - Clickable */}
+                  <a
+                    href={`https://solscan.io/tx/${tx.signature}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-normal text-[14px] leading-[1.4] min-w-[290px] hover:opacity-80 transition-opacity cursor-pointer"
+                    style={{ fontFamily: 'Inter, sans-serif', color: textColor }}
+                  >
+                    {formatTransactionDescription(tx)}
+                  </a>
+                  {/* Transaction Date */}
+                  <p className="font-normal text-[14px] leading-[1.4] shrink-0" style={{ fontFamily: 'Inter, sans-serif', color: textColor }}>
+                    {formatDate(tx.timestamp)}
+                  </p>
                 </div>
               );
             })
@@ -591,33 +464,71 @@ export function HistoryContent({ tokenAddress, tokenSymbol = '' }: HistoryConten
 
       {/* Pagination */}
       {!loading && (currentPage > 0 || hasMorePages) && (
-        <div className="flex items-center justify-start gap-2 mt-5 max-w-2xl">
+        <div className="flex gap-[40px] items-center justify-center w-full shrink-0">
           <button
             onClick={() => navigateToPage(currentPage - 1)}
             disabled={currentPage === 0 || loadingPage}
-            className={`text-[14px] transition-colors cursor-pointer ${
+            className={`font-normal text-[14px] leading-[1.2] transition-colors ${
               currentPage === 0 || loadingPage
-                ? 'text-gray-300 opacity-50 cursor-not-allowed'
-                : 'text-gray-300 hover:text-[#b2e9fe]'
+                ? 'cursor-not-allowed'
+                : 'cursor-pointer'
             }`}
-            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+            style={{ 
+              fontFamily: 'Inter, sans-serif',
+              color: currentPage === 0 || loadingPage 
+                ? mutedTextColor 
+                : (theme === 'dark' ? mutedTextColor : mutedTextColor),
+            }}
+            onMouseEnter={(e) => {
+              if (!e.currentTarget.disabled && theme === 'dark') {
+                e.currentTarget.style.color = '#ffffff';
+              } else if (!e.currentTarget.disabled) {
+                e.currentTarget.style.color = '#0a0a0a';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!e.currentTarget.disabled) {
+                e.currentTarget.style.color = mutedTextColor;
+              }
+            }}
           >
-            {loadingPage ? '[Loading...]' : '[Previous]'}
+            previous
           </button>
-          <span className="text-[14px] text-gray-300 px-4" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-            Page {currentPage + 1}
-          </span>
+          <p className="font-normal text-[14px] leading-[1.2]" style={{ fontFamily: 'Inter, sans-serif', color: textColor }}>
+            Page {currentPage + 1}/{totalPages}
+          </p>
           <button
             onClick={() => navigateToPage(currentPage + 1)}
             disabled={!hasMorePages || loadingPage}
-            className={`text-[14px] transition-colors cursor-pointer ${
+            className={`font-normal text-[14px] leading-[1.2] transition-colors ${
               !hasMorePages || loadingPage
-                ? 'text-gray-300 opacity-50 cursor-not-allowed'
-                : 'text-gray-300 hover:text-[#b2e9fe]'
+                ? 'cursor-not-allowed'
+                : 'cursor-pointer'
             }`}
-            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+            style={{ 
+              fontFamily: 'Inter, sans-serif',
+              color: !hasMorePages || loadingPage 
+                ? mutedTextColor 
+                : (theme === 'dark' ? mutedTextColor : '#0a0a0a'),
+            }}
+            onMouseEnter={(e) => {
+              if (!e.currentTarget.disabled && theme === 'dark') {
+                e.currentTarget.style.color = '#ffffff';
+              } else if (!e.currentTarget.disabled) {
+                e.currentTarget.style.opacity = '0.8';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!e.currentTarget.disabled) {
+                if (theme === 'dark') {
+                  e.currentTarget.style.color = mutedTextColor;
+                } else {
+                  e.currentTarget.style.opacity = '1';
+                }
+              }
+            }}
           >
-            {loadingPage ? '[Loading...]' : '[Next]'}
+            next
           </button>
         </div>
       )}

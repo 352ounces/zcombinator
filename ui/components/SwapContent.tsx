@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useTheme } from '@/contexts/ThemeContext';
 import { useWallet } from '@/components/WalletProvider';
 import { usePrivy } from '@privy-io/react-auth';
 import { Connection, PublicKey, Transaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -32,11 +33,18 @@ interface WindowWithWallets extends Window {
   solflare?: SolanaWalletProvider;
 }
 
-export function SwapContent() {
+interface SwapContentProps {
+  initialToToken?: Token;
+}
+
+export function SwapContent({ initialToToken }: SwapContentProps = {} as SwapContentProps) {
   const { wallet, isPrivyAuthenticated } = useWallet();
+  const { theme } = useTheme();
+  const headingColor = theme === 'dark' ? '#ffffff' : '#0a0a0a';
+  const subtitleColor = theme === 'dark' ? '#B8B8B8' : '#717182';
   const { login, authenticated, linkWallet } = usePrivy();
   const [fromToken, setFromToken] = useState<Token>('SOL');
-  const [toToken, setToToken] = useState<Token>('ZC');
+  const [toToken, setToToken] = useState<Token>(initialToToken || 'ZC');
   const [amount, setAmount] = useState('');
   const [estimatedOutput, setEstimatedOutput] = useState('');
   const [priceImpact, setPriceImpact] = useState<string>('');
@@ -380,94 +388,32 @@ export function SwapContent() {
   };
 
   return (
-    <div style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-      <div className="max-w-xl">
-        {/* Header */}
-        <div className="mb-3">
-          <h1 className="text-7xl font-bold">Swap</h1>
-          <p className="mt-7 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}Swap ZC tokens</p>
-          <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Balances refresh 10 seconds after swap. Gas fees apply.</p>
-        </div>
+    <div className="flex flex-col items-center gap-6 px-5 pt-[160px]">
+      {/* Swap Header */}
+      <div className="flex flex-col gap-2 items-start w-full max-w-[576px]">
+        <h2 className="font-medium text-[20px] leading-[1.34] tracking-[-0.2px]" style={{ fontFamily: 'Inter, sans-serif', color: headingColor }}>
+          Swap ZC tokens
+        </h2>
+        <p className="font-normal text-[14px] leading-[1.2]" style={{ fontFamily: 'Inter, sans-serif', color: subtitleColor }}>
+          Balances refresh 10 seconds after swap. Gas fees apply.
+        </p>
+      </div>
 
-        {/* Wallet Info */}
-        {isPrivyAuthenticated && wallet && (
-          <div className="bg-[#1E1E1E] rounded-2xl py-4 mb-4">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Connected Wallet</span>
-                <button
-                  onClick={copyWalletAddress}
-                  className="flex items-center gap-1 text-[14px] text-gray-400 hover:text-white transition-colors cursor-pointer"
-                  style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                  title="Copy wallet address"
-                >
-                  <span>{wallet.toBase58().slice(0, 4)}...{wallet.toBase58().slice(-4)}</span>
-                  {copiedWallet ? (
-                    <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                    </svg>
-                  ) : (
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  )}
-                </button>
-                {refreshingBalancesAfterSwap && (
-                  <svg className="animate-spin h-4 w-4 text-[#F7FCFE]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                )}
-              </div>
-              {isLoadingBalances && (
-                <div className="flex items-center gap-2">
-                  <svg className="animate-spin h-4 w-4 text-[#F7FCFE]" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Refreshing...</span>
-                </div>
-              )}
-            </div>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC', 'ZTORIO'] as Token[]).map((token) => (
-                <div key={token} className="bg-[#2B2B2A] rounded-lg p-3 flex items-center gap-3">
-                  {getTokenIcon(token).startsWith('/') ? (
-                    <img src={getTokenIcon(token)} alt={token} className="w-8 h-8 rounded-full object-cover flex-shrink-0" />
-                  ) : (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center flex-shrink-0">
-                      <span className="text-xs font-bold text-white">{getTokenIcon(token)}</span>
-                    </div>
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                      {(() => {
-                        const balance = parseFloat(balances[token]);
-                        if (balance >= 1000000000) return (balance / 1000000000).toFixed(2).replace(/\.?0+$/, '') + 'B';
-                        if (balance >= 1000000) return (balance / 1000000).toFixed(2).replace(/\.?0+$/, '') + 'M';
-                        if (balance >= 1000) return (balance / 1000).toFixed(2).replace(/\.?0+$/, '') + 'K';
-                        return parseFloat(balance.toFixed(4)).toString();
-                      })()}
-                    </div>
-                    <div className="text-xs text-gray-400" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{getTokenSymbol(token)}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Swap Container */}
-        <div className="bg-[#1E1E1E] rounded py-4">
+      {/* Swap Container */}
+      <div className="flex flex-col gap-5 max-w-[576px] w-full">
+        <div className="relative h-[208px]">
           {/* From Token */}
-          <div className="bg-[#2B2B2A] rounded-xl p-4 mb-2">
+          <div 
+            className="absolute rounded-[12px] p-4 top-0 left-0 right-0"
+            style={{
+              backgroundColor: theme === 'dark' ? '#222222' : '#fafafa',
+              border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+            }}
+          >
             <div className="flex justify-between mb-2">
-              <label className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>You pay</label>
+              <label className="text-sm" style={{ fontFamily: 'Inter, sans-serif', color: subtitleColor }}>You pay</label>
               <div className="flex items-center gap-1">
-                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                  <span className="md:hidden">Bal:</span>
-                  <span className="hidden md:inline">Balance:</span>
-                </span>
+                <span className="text-sm" style={{ fontFamily: 'Inter, sans-serif', color: subtitleColor }}>Balance:</span>
                 {getTokenIcon(fromToken).startsWith('/') ? (
                   <img src={getTokenIcon(fromToken)} alt={fromToken} className="w-4 h-4 rounded-full object-cover" />
                 ) : (
@@ -475,10 +421,10 @@ export function SwapContent() {
                     <span className="text-[10px] font-bold text-white">{getTokenIcon(fromToken)}</span>
                   </div>
                 )}
-                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{formatBalance(balances[fromToken])}</span>
+                <span className="text-sm" style={{ fontFamily: 'Inter, sans-serif', color: subtitleColor }}>{formatBalance(balances[fromToken])}</span>
               </div>
             </div>
-            <div className="flex items-center gap-3 relative">
+            <div className="flex items-center gap-3">
               <div className="flex-1 relative">
                 <input
                   type="number"
@@ -488,8 +434,11 @@ export function SwapContent() {
                     setIsMaxAmount(false);
                   }}
                   placeholder="0.0"
-                  className="w-full bg-transparent text-3xl font-semibold focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none pr-16"
-                  style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                  className={`w-full bg-transparent text-[20px] font-medium leading-[1.34] tracking-[-0.2px] focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none pr-12 ${theme === 'dark' ? 'placeholder:text-[#B8B8B8]' : 'placeholder:text-[rgba(164,164,164,0.8)]'}`}
+                  style={{ 
+                    fontFamily: 'Inter, sans-serif',
+                    color: theme === 'dark' ? '#ffffff' : '#0a0a0a',
+                  }}
                   step="any"
                 />
                 <button
@@ -497,22 +446,41 @@ export function SwapContent() {
                     setAmount(balances[fromToken]);
                     setIsMaxAmount(true);
                   }}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 text-xs font-semibold text-[#F7FCFE] bg-[#1E1E1E] hover:bg-[#141414] px-2 py-1 rounded transition-colors"
-                  style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                  className="absolute right-0 top-1/2 -translate-y-1/2 rounded-[4px] px-2 py-1 text-[12px] font-semibold leading-[16px] transition-colors cursor-pointer"
+                  style={{
+                    fontFamily: 'Inter, sans-serif',
+                    backgroundColor: theme === 'dark' ? '#303030' : '#ffffff',
+                    border: theme === 'dark' ? '2px solid #1C1C1C' : '1px solid #e5e5e5',
+                    color: subtitleColor,
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = theme === 'dark' ? '#3F3E4F' : '#f6f6f7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = theme === 'dark' ? '#303030' : '#ffffff';
+                  }}
                 >
                   MAX
                 </button>
               </div>
-
-              <div className="flex items-center gap-2">
-                <div className="relative">
+              <div className="relative">
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowFromSelector(!showFromSelector);
                     setShowToSelector(false);
                   }}
-                  className="flex items-center gap-2 bg-[#1E1E1E] rounded-xl px-4 py-2 hover:bg-[#141414] transition-colors"
+                  className="flex items-center gap-3 rounded-[12px] px-4 py-2 transition-colors cursor-pointer"
+                  style={{
+                    backgroundColor: theme === 'dark' ? '#303030' : '#ffffff',
+                    border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = theme === 'dark' ? '#3F3E4F' : '#f6f6f7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = theme === 'dark' ? '#303030' : '#ffffff';
+                  }}
                 >
                   {getTokenIcon(fromToken).startsWith('/') ? (
                     <img src={getTokenIcon(fromToken)} alt={fromToken} className="w-6 h-6 rounded-full object-cover" />
@@ -521,15 +489,19 @@ export function SwapContent() {
                       <span className="text-xs font-bold text-white">{getTokenIcon(fromToken)}</span>
                     </div>
                   )}
-                  <span className="font-semibold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{getTokenSymbol(fromToken)}</span>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <span className="font-semibold text-[16px] leading-[16px] tracking-[0.32px]" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>{getTokenSymbol(fromToken)}</span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
                 {showFromSelector && (
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute top-full mt-2 left-0 bg-[#1E1E1E] border border-gray-700 rounded-xl overflow-hidden shadow-xl z-50 min-w-[160px]"
+                    className="absolute top-full mt-2 left-0 rounded-[12px] overflow-hidden shadow-xl z-50 min-w-[160px]"
+                    style={{
+                      backgroundColor: theme === 'dark' ? '#303030' : '#ffffff',
+                      border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+                    }}
                   >
                     {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC', 'ZTORIO'] as Token[]).filter(t => t !== fromToken && t !== toToken).map((token) => (
                       <button
@@ -539,7 +511,16 @@ export function SwapContent() {
                           setFromToken(token);
                           setShowFromSelector(false);
                         }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#2B2B2A] transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 transition-colors"
+                        style={{
+                          backgroundColor: theme === 'dark' ? '#303030' : '#ffffff',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = theme === 'dark' ? '#3F3E4F' : '#fafafa';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = theme === 'dark' ? '#303030' : '#ffffff';
+                        }}
                       >
                         {getTokenIcon(token).startsWith('/') ? (
                           <img src={getTokenIcon(token)} alt={token} className="w-6 h-6 rounded-full object-cover" />
@@ -548,37 +529,55 @@ export function SwapContent() {
                             <span className="text-xs font-bold text-white">{getTokenIcon(token)}</span>
                           </div>
                         )}
-                        <span className="font-semibold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{getTokenSymbol(token)}</span>
+                        <span className="font-semibold" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>{getTokenSymbol(token)}</span>
                       </button>
                     ))}
                   </div>
                 )}
-                </div>
               </div>
             </div>
           </div>
 
           {/* Switch Button */}
-          <div className="flex justify-center -my-3 relative z-[5]">
+          <div className="absolute left-1/2 top-[86px] -translate-x-1/2 z-10">
             <button
               onClick={switchTokens}
-              className="bg-[#1E1E1E] border-4 border-[#141414] p-2 rounded-xl hover:bg-[#2B2B2A] transition-colors"
+              className="rounded-[12px] p-3 transition-colors cursor-pointer"
+              style={{
+                backgroundColor: theme === 'dark' ? '#2a2a2a' : '#ffffff',
+                border: theme === 'dark' ? '2px solid #1C1C1C' : '2px solid #e5e5e5',
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#35343F' : '#f6f6f7';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#ffffff';
+              }}
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg 
+                className="w-5 h-5" 
+                fill="none" 
+                stroke="currentColor" 
+                viewBox="0 0 24 24"
+                style={{ color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
               </svg>
             </button>
           </div>
 
           {/* To Token */}
-          <div className="bg-[#2B2B2A] rounded-xl p-4 mb-4">
+          <div 
+            className="absolute rounded-[12px] p-4 top-[108px] left-0 right-0"
+            style={{
+              backgroundColor: theme === 'dark' ? '#222222' : '#fafafa',
+              border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+            }}
+          >
             <div className="flex justify-between mb-2">
-              <label className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>You receive</label>
+              <label className="text-sm" style={{ fontFamily: 'Inter, sans-serif', color: subtitleColor }}>You receive</label>
               <div className="flex items-center gap-1">
-                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                  <span className="md:hidden">Bal:</span>
-                  <span className="hidden md:inline">Balance:</span>
-                </span>
+                <span className="text-sm" style={{ fontFamily: 'Inter, sans-serif', color: subtitleColor }}>Balance:</span>
                 {getTokenIcon(toToken).startsWith('/') ? (
                   <img src={getTokenIcon(toToken)} alt={toToken} className="w-4 h-4 rounded-full object-cover" />
                 ) : (
@@ -586,18 +585,21 @@ export function SwapContent() {
                     <span className="text-[10px] font-bold text-white">{getTokenIcon(toToken)}</span>
                   </div>
                 )}
-                <span className="text-sm text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{formatBalance(balances[toToken])}</span>
+                <span className="text-sm" style={{ fontFamily: 'Inter, sans-serif', color: subtitleColor }}>{formatBalance(balances[toToken])}</span>
               </div>
             </div>
-            <div className="flex items-center gap-3 relative">
+            <div className="flex items-center gap-3">
               <div className="flex-1 relative">
                 <input
                   type="text"
                   value={isCalculating ? '...' : estimatedOutput}
                   readOnly
                   placeholder="0.0"
-                  className="w-full bg-transparent text-3xl font-semibold focus:outline-none pr-16"
-                  style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                  className={`w-full bg-transparent text-[20px] font-medium leading-[1.34] tracking-[-0.2px] focus:outline-none ${theme === 'dark' ? 'placeholder:text-[#B8B8B8]' : 'placeholder:text-[rgba(164,164,164,0.8)]'}`}
+                  style={{ 
+                    fontFamily: 'Inter, sans-serif',
+                    color: theme === 'dark' ? '#ffffff' : '#0a0a0a',
+                  }}
                 />
               </div>
               <div className="relative">
@@ -607,7 +609,17 @@ export function SwapContent() {
                     setShowToSelector(!showToSelector);
                     setShowFromSelector(false);
                   }}
-                  className="flex items-center gap-2 bg-[#1E1E1E] rounded-xl px-4 py-2 hover:bg-[#141414] transition-colors"
+                  className="flex items-center gap-3 rounded-[12px] px-4 py-2 transition-colors cursor-pointer"
+                  style={{
+                    backgroundColor: theme === 'dark' ? '#303030' : '#ffffff',
+                    border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.backgroundColor = theme === 'dark' ? '#3F3E4F' : '#f6f6f7';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.backgroundColor = theme === 'dark' ? '#303030' : '#ffffff';
+                  }}
                 >
                   {getTokenIcon(toToken).startsWith('/') ? (
                     <img src={getTokenIcon(toToken)} alt={toToken} className="w-6 h-6 rounded-full object-cover" />
@@ -616,15 +628,19 @@ export function SwapContent() {
                       <span className="text-xs font-bold text-white">{getTokenIcon(toToken)}</span>
                     </div>
                   )}
-                  <span className="font-semibold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{getTokenSymbol(toToken)}</span>
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <span className="font-semibold text-[16px] leading-[16px] tracking-[0.32px]" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>{getTokenSymbol(toToken)}</span>
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                 </button>
                 {showToSelector && (
                   <div
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute top-full mt-2 left-0 bg-[#1E1E1E] border border-gray-700 rounded-xl overflow-hidden shadow-xl z-10 min-w-[160px]"
+                    className="absolute top-full mt-2 left-0 rounded-[12px] overflow-hidden shadow-xl z-10 min-w-[160px]"
+                    style={{
+                      backgroundColor: theme === 'dark' ? '#303030' : '#ffffff',
+                      border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+                    }}
                   >
                     {(['SOL', 'ZC', 'SHIRTLESS', 'GITPOST', 'PERC', 'ZTORIO'] as Token[]).filter(t => t !== fromToken && t !== toToken).map((token) => (
                       <button
@@ -634,7 +650,16 @@ export function SwapContent() {
                           setToToken(token);
                           setShowToSelector(false);
                         }}
-                        className="w-full flex items-center gap-3 px-4 py-3 hover:bg-[#2B2B2A] transition-colors"
+                        className="w-full flex items-center gap-3 px-4 py-3 transition-colors"
+                        style={{
+                          backgroundColor: theme === 'dark' ? '#303030' : '#ffffff',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.backgroundColor = theme === 'dark' ? '#3F3E4F' : '#fafafa';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = theme === 'dark' ? '#303030' : '#ffffff';
+                        }}
                       >
                         {getTokenIcon(token).startsWith('/') ? (
                           <img src={getTokenIcon(token)} alt={token} className="w-6 h-6 rounded-full object-cover" />
@@ -643,7 +668,7 @@ export function SwapContent() {
                             <span className="text-xs font-bold text-white">{getTokenIcon(token)}</span>
                           </div>
                         )}
-                        <span className="font-semibold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{getTokenSymbol(token)}</span>
+                        <span className="font-semibold" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>{getTokenSymbol(token)}</span>
                       </button>
                     ))}
                   </div>
@@ -651,147 +676,10 @@ export function SwapContent() {
               </div>
             </div>
           </div>
+        </div>
 
-          {/* Swap Info */}
-          {estimatedOutput && estimatedOutput !== 'Error' && (
-            <div className="bg-[#2B2B2A] rounded-xl p-4 mb-4 text-sm space-y-2" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-              <div className="flex justify-between items-center text-gray-300">
-                <span>Rate</span>
-                <div className="flex items-center gap-2">
-                  <span>1 {getTokenSymbol(fromToken)} = {(parseFloat(estimatedOutput) / parseFloat(amount || '1')).toFixed(6)} {getTokenSymbol(toToken)}</span>
-                  {quoteRefreshCountdown > 0 && (
-                    <span className="text-xs text-gray-400">({quoteRefreshCountdown}s)</span>
-                  )}
-                </div>
-              </div>
-              {priceImpact && (
-                <div className="flex justify-between text-gray-300">
-                  <span>Price impact</span>
-                  <span className={parseFloat(priceImpact) >= 10 ? 'text-red-400' : parseFloat(priceImpact) >= 5 ? 'text-yellow-400' : 'text-green-400'}>
-                    {parseFloat(priceImpact).toFixed(2)}%
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between text-gray-300">
-                <span>Route</span>
-                <span className="flex items-center gap-1 text-right">
-                  {getSwapRoute(fromToken, toToken) === 'direct-cp' && (
-                    <>
-                      {getTokenIcon(fromToken).startsWith('/') ? (
-                        <img src={getTokenIcon(fromToken)} alt={fromToken} className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-white">{getTokenIcon(fromToken)}</span>
-                        </div>
-                      )}
-                      <span>→</span>
-                      {getTokenIcon(toToken).startsWith('/') ? (
-                        <img src={getTokenIcon(toToken)} alt={toToken} className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-white">{getTokenIcon(toToken)}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {getSwapRoute(fromToken, toToken) === 'direct-dbc' && (
-                    <>
-                      {getTokenIcon(fromToken).startsWith('/') ? (
-                        <img src={getTokenIcon(fromToken)} alt={fromToken} className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-white">{getTokenIcon(fromToken)}</span>
-                        </div>
-                      )}
-                      <span>→</span>
-                      {getTokenIcon(toToken).startsWith('/') ? (
-                        <img src={getTokenIcon(toToken)} alt={toToken} className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-white">{getTokenIcon(toToken)}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                  {getSwapRoute(fromToken, toToken) === 'double' && (() => {
-                    let middleToken: Token;
-                    if ((fromToken === 'ZC' && toToken === 'GITPOST') || (fromToken === 'GITPOST' && toToken === 'ZC')) {
-                      middleToken = 'SHIRTLESS';
-                    } else if ((fromToken === 'SOL' && toToken === 'SHIRTLESS') || (fromToken === 'SHIRTLESS' && toToken === 'SOL')) {
-                      middleToken = 'ZC';
-                    } else {
-                      middleToken = 'ZC';
-                    }
-
-                    return (
-                      <>
-                        {getTokenIcon(fromToken).startsWith('/') ? (
-                          <img src={getTokenIcon(fromToken)} alt={fromToken} className="w-4 h-4 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                            <span className="text-[10px] font-bold text-white">{getTokenIcon(fromToken)}</span>
-                          </div>
-                        )}
-                        <span>→</span>
-                        {getTokenIcon(middleToken).startsWith('/') ? (
-                          <img src={getTokenIcon(middleToken)} alt={middleToken} className="w-4 h-4 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                            <span className="text-[10px] font-bold text-white">{getTokenIcon(middleToken)}</span>
-                          </div>
-                        )}
-                        <span>→</span>
-                        {getTokenIcon(toToken).startsWith('/') ? (
-                          <img src={getTokenIcon(toToken)} alt={toToken} className="w-4 h-4 rounded-full object-cover" />
-                        ) : (
-                          <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                            <span className="text-[10px] font-bold text-white">{getTokenIcon(toToken)}</span>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
-                  {getSwapRoute(fromToken, toToken) === 'triple' && (
-                    <>
-                      {getTokenIcon(fromToken).startsWith('/') ? (
-                        <img src={getTokenIcon(fromToken)} alt={fromToken} className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-white">{getTokenIcon(fromToken)}</span>
-                        </div>
-                      )}
-                      <span>→</span>
-                      {getTokenIcon('ZC').startsWith('/') ? (
-                        <img src={getTokenIcon('ZC')} alt="ZC" className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-white">{getTokenIcon('ZC')}</span>
-                        </div>
-                      )}
-                      <span>→</span>
-                      {getTokenIcon('SHIRTLESS').startsWith('/') ? (
-                        <img src={getTokenIcon('SHIRTLESS')} alt="SHIRTLESS" className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-white">{getTokenIcon('SHIRTLESS')}</span>
-                        </div>
-                      )}
-                      <span>→</span>
-                      {getTokenIcon(toToken).startsWith('/') ? (
-                        <img src={getTokenIcon(toToken)} alt={toToken} className="w-4 h-4 rounded-full object-cover" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center">
-                          <span className="text-[10px] font-bold text-white">{getTokenIcon(toToken)}</span>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </span>
-              </div>
-            </div>
-          )}
-
-          {/* Swap Button */}
+        {/* Swap Button */}
+        <div className="flex items-center justify-center">
           <button
             onClick={!wallet ? handleConnectWallet : handleSwap}
             disabled={
@@ -802,22 +690,47 @@ export function SwapContent() {
                estimatedOutput === 'Error' ||
                parseFloat(amount) > parseFloat(balances[fromToken]))
             }
-            className={`w-full font-bold py-4 rounded-xl transition-opacity disabled:cursor-not-allowed ${
-              !wallet
-                ? 'text-[14px] text-[#b2e9fe] hover:text-[#d0f2ff] bg-transparent'
+            className="w-[280px] rounded-[8px] px-4 py-3 transition-opacity disabled:cursor-not-allowed"
+            style={{
+              fontFamily: 'Inter, sans-serif',
+              backgroundColor: !wallet
+                ? (theme === 'dark' ? '#404040' : '#f1f3f9')
                 : (wallet && amount && parseFloat(amount) > 0 && parseFloat(amount) <= parseFloat(balances[fromToken]) && estimatedOutput !== 'Error')
-                ? 'bg-[#F7FCFE] text-black hover:opacity-90'
-                : 'bg-gray-600 text-gray-300 opacity-50'
-            }`}
-            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                ? (theme === 'dark' ? '#5A5798' : '#403d6d')
+                : (theme === 'dark' ? '#404040' : '#f1f3f9'),
+              color: !wallet
+                ? (theme === 'dark' ? '#ffffff' : '#0a0a0a')
+                : (wallet && amount && parseFloat(amount) > 0 && parseFloat(amount) <= parseFloat(balances[fromToken]) && estimatedOutput !== 'Error')
+                ? '#ffffff'
+                : (theme === 'dark' ? '#ffffff' : '#0a0a0a'),
+              opacity: (!wallet || (wallet && (!amount || parseFloat(amount) <= 0 || estimatedOutput === 'Error' || parseFloat(amount) > parseFloat(balances[fromToken])))) && theme !== 'dark' ? 0.5 : 1,
+            }}
+            onMouseEnter={(e) => {
+              if (!e.currentTarget.disabled && !wallet) {
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#4A4A4A' : '#f1f3f9';
+              } else if (!e.currentTarget.disabled && wallet && amount && parseFloat(amount) > 0 && parseFloat(amount) <= parseFloat(balances[fromToken]) && estimatedOutput !== 'Error') {
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2F2D4F' : '#403d6d';
+              }
+            }}
+            onMouseLeave={(e) => {
+              if (!wallet) {
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#404040' : '#f1f3f9';
+              } else if (wallet && amount && parseFloat(amount) > 0 && parseFloat(amount) <= parseFloat(balances[fromToken]) && estimatedOutput !== 'Error') {
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#5A5798' : '#403d6d';
+              } else {
+                e.currentTarget.style.backgroundColor = theme === 'dark' ? '#404040' : '#f1f3f9';
+              }
+            }}
           >
-            {!wallet
-              ? '[CLICK TO CONNECT WALLET]'
-              : isSwapping
-              ? 'Swapping...'
-              : wallet && amount && parseFloat(amount) > parseFloat(balances[fromToken])
-              ? <><span className="md:hidden">Insufficient Bal</span><span className="hidden md:inline">Insufficient Balance</span></>
-              : 'Swap'}
+            <span className="font-semibold text-[16px] leading-[16px] tracking-[0.32px] capitalize">
+              {!wallet
+                ? 'Connect a wallet'
+                : isSwapping
+                ? 'Swapping...'
+                : wallet && amount && parseFloat(amount) > parseFloat(balances[fromToken])
+                ? 'Insufficient Balance'
+                : 'Swap'}
+            </span>
           </button>
         </div>
       </div>

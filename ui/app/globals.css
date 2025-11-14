@@ -4,6 +4,20 @@
   --background: #181818;
   --foreground: #F7FCFE;
   --accent: #b2e9fe;
+  
+  /* Design system colors from Figma */
+  --background-sidebar: #fafafa;
+  --background-sidebar-stroke: #e5e5e5;
+  --button-sidebar-active: #e4e4e8;
+  --button-sidebar-2: #949494;
+  --text-main: #0a0a0a;
+  --text-second: #717182;
+  --text-color: #ffffff;
+  --brand-color: #403d6d;
+  --component-bg: #ffffff;
+  --stroke: #e5e5e5;
+  --button-main-disabled: #f1f3f9;
+  --button-radius: 8px;
 }
 
 @theme inline {

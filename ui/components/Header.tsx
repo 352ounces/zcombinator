@@ -1,17 +1,147 @@
 'use client';
 
 import { TabBar } from './TabBar';
+import { usePathname } from 'next/navigation';
+import { useWallet } from './WalletProvider';
+import { usePrivy } from '@privy-io/react-auth';
+import { useTheme } from '@/contexts/ThemeContext';
+
+function ConnectWalletButton() {
+  const { connecting, externalWallet } = useWallet();
+  const { login, authenticated, linkWallet, ready } = usePrivy();
+  const { theme } = useTheme();
+
+  const handleClick = async () => {
+    try {
+      if (!authenticated) {
+        await login();
+      } else {
+        await linkWallet();
+      }
+    } catch (err) {
+      console.error('Failed to connect wallet:', err);
+    }
+  };
+
+  const buttonColor = theme === 'dark' ? '#5A5798' : '#403d6d';
+
+  if (!ready) {
+    return (
+      <div className="rounded-[8px] px-4 py-3 text-white font-semibold text-[16px] leading-[16px] tracking-[0.32px] capitalize opacity-50" style={{ fontFamily: 'Inter, sans-serif', backgroundColor: buttonColor }}>
+        Loading...
+      </div>
+    );
+  }
+
+  if (externalWallet) {
+    return (
+      <div className="text-[14px]" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+        {externalWallet.toString().slice(0, 6)}...{externalWallet.toString().slice(-6)}
+      </div>
+    );
+  }
+
+  return (
+    <button
+      onClick={handleClick}
+      disabled={connecting}
+      className="rounded-[8px] px-4 py-3 text-white font-semibold text-[16px] leading-[16px] tracking-[0.32px] capitalize disabled:opacity-50 cursor-pointer hover:opacity-90 transition-opacity"
+      style={{ fontFamily: 'Inter, sans-serif', backgroundColor: buttonColor }}
+    >
+      {connecting ? 'Connecting...' : 'Connect a wallet'}
+    </button>
+  );
+}
+
+function PageTitle() {
+  const pathname = usePathname();
+  const { theme } = useTheme();
+  
+  // Check if it's a project detail page
+  const isProjectDetailPage = pathname?.startsWith('/projects/') && pathname !== '/projects';
+  
+  const titles: Record<string, string> = {
+    '/faq': 'FAQ',
+    '/launch': 'Launch a token',
+    '/swap': 'Swap',
+    '/stake': 'Stake',
+    '/claim': 'Claim',
+    '/portfolio': 'Portfolio',
+    '/projects': 'Projects',
+    '/decisions': 'Zcombinator decision markets',
+    '/contributions': 'Contributions',
+  };
+
+  const subtitles: Record<string, string> = {
+    '/faq': 'Frequently asked questions about ZC protocol',
+    '/swap': 'Swap ZC tokens',
+    '/launch': 'Launch a ZC token for your project here',
+    '/projects': 'See ZC launched projects here',
+    '/decisions': 'Explore Zcombinator\'s projects proposals and decision markets based on them.',
+    '/stake': 'Stake to earn yield and get rewarded more for your contributions',
+    '/portfolio': 'See ZC launched projects here',
+  };
+
+  let title = titles[pathname] || '';
+  let subtitle = subtitles[pathname] || '';
+
+  // Override for project detail page
+  if (isProjectDetailPage) {
+    title = 'Project page';
+    subtitle = 'See ZC launched projects here';
+  }
+
+  if (!title) return null;
+
+  const titleColor = theme === 'dark' ? '#ffffff' : '#0a0a0a';
+  const subtitleColor = theme === 'dark' ? '#B8B8B8' : '#717182';
+
+  return (
+    <div className="flex flex-col">
+      <h1 className="font-medium text-[24px] leading-[1.2] tracking-[-0.24px]" style={{ fontFamily: 'Inter, sans-serif', color: titleColor }}>
+        {title}
+      </h1>
+      {subtitle && (
+        <p className="font-normal text-[14px] leading-[1.2]" style={{ fontFamily: 'Inter, sans-serif', color: subtitleColor }}>
+          {subtitle}
+        </p>
+      )}
+    </div>
+  );
+}
 
 export function Header() {
+  const pathname = usePathname();
+  const { theme } = useTheme();
+  const isFaqPage = pathname === '/faq';
+  const isSwapPage = pathname === '/swap';
+  const isLaunchPage = pathname === '/launch';
+  const isProjectsPage = pathname === '/projects' || pathname?.startsWith('/projects/');
+  const isProposalsPage = pathname === '/decisions';
+  const isStakePage = pathname === '/stake';
+  const isPortfolioPage = pathname === '/portfolio';
+  const isLightPage = isFaqPage || isSwapPage || isLaunchPage || isProjectsPage || isProposalsPage || isStakePage || isPortfolioPage;
+
+  const headerBg = isLightPage 
+    ? (theme === 'dark' ? '#292929' : '#ffffff')
+    : '#181818';
+
   return (
     <header
       className="sticky top-0 z-10"
       style={{
-        backgroundColor: '#181818',
-        borderBottom: '1px solid #2B2B2B'
+        backgroundColor: headerBg,
+        borderBottom: isLightPage ? 'none' : '1px solid #2B2B2B',
       }}
     >
-      <TabBar />
+      {isLightPage ? (
+        <div className="flex items-center justify-between px-[40px] py-5">
+          <PageTitle />
+          <ConnectWalletButton />
+        </div>
+      ) : (
+        <TabBar />
+      )}
     </header>
   );
 }

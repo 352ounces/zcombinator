@@ -1,12 +1,26 @@
 'use client';
 
+import { useState, useEffect, useMemo } from 'react';
 import { useWallet } from '@/components/WalletProvider';
-import { ClaimButton } from '@/components/ClaimButton';
-import { SecureVerificationModal } from '@/components/SecureVerificationModal';
-import { useState, useEffect } from 'react';
-import { usePrivy } from '@privy-io/react-auth';
-import { useTabContext } from '@/contexts/TabContext';
-import { useRouter, usePathname } from 'next/navigation';
+import { useSignTransaction } from '@privy-io/react-auth/solana';
+import { Transaction } from '@solana/web3.js';
+import bs58 from 'bs58';
+import Image from 'next/image';
+import Link from 'next/link';
+import { useTheme } from '@/contexts/ThemeContext';
+import {
+  ClaimInfoResult,
+  ClaimInfoResponse,
+  MintClaimRequest,
+  MintClaimResult,
+  ConfirmClaimRequest,
+  ConfirmClaimResult,
+  isApiError,
+  isClaimInfoResponse,
+  isMintClaimResponse,
+  isConfirmClaimResponse
+} from '@/types/api';
+import { TextInput } from '@/components/TextInput';
 
 interface TokenLaunch {
   id: number;
@@ -14,920 +28,940 @@ interface TokenLaunch {
   creator_wallet: string;
   token_address: string;
   token_metadata_url: string;
-  token_name?: string;
-  token_symbol?: string;
-  created_at: string;
-  creator_twitter?: string;
-  creator_github?: string;
-  is_creator_designated?: boolean;
+  token_name: string | null;
+  token_symbol: string | null;
   verified?: boolean;
 }
 
-interface VerifiedTokenLaunch extends TokenLaunch {
-  verified: boolean;
-  userBalance?: string;
+interface TokenMetadata {
+  name: string;
+  symbol: string;
+  image: string;
 }
 
-interface Presale {
-  id: number;
-  token_address: string;
-  creator_wallet: string;
-  token_name?: string;
-  token_symbol?: string;
-  token_metadata_url: string;
-  presale_tokens?: string[];
-  creator_twitter?: string;
-  creator_github?: string;
-  status: string;
-  created_at: string;
+interface MarketData {
+  price: number;
+  market_cap: number;
+  price_change_24h?: number;
 }
 
+interface HeldToken {
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  balance: string;
+  usdValue: string;
+  usdValueNumber: number; // For sorting
+  image?: string;
+}
+
+interface ClaimableToken {
+  id: string;
+  tokenAddress: string;
+  name: string;
+  symbol: string;
+  balance: string;
+  usdValue: string;
+  usdValueNumber: number;
+  claimLabel: string;
+  image?: string;
+}
+
+interface CreatedToken {
+  id: string;
+  name: string;
+  symbol: string;
+  tokenAddress: string;
+  claimLabel: string;
+  socialsLabel: string;
+  image?: string;
+  socials: {
+    website?: string;
+    twitter?: string;
+    devTwitter?: string;
+    discord?: string;
+    github?: string;
+    devGithub?: string;
+  };
+}
 
 export default function PortfolioPage() {
-  const { wallet, isPrivyAuthenticated, connecting, externalWallet, hasTwitter, hasGithub, twitterUsername, githubUsername } = useWallet();
-  const { ready, login, authenticated, linkWallet } = usePrivy();
-  const { addTab } = useTabContext();
-  const router = useRouter();
-  const pathname = usePathname();
-  const [launches, setLaunches] = useState<VerifiedTokenLaunch[]>([]);
-  const [presales, setPresales] = useState<Presale[]>([]);
+  const { wallet, externalWallet, activeWallet } = useWallet();
+  const { signTransaction } = useSignTransaction();
+  const { theme } = useTheme();
+  const cardBg = theme === 'dark' ? '#222222' : '#ffffff';
+  const cardBorder = theme === 'dark' ? '#1C1C1C' : '#e5e5e5';
+  const cardShadow = theme === 'dark'
+    ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)'
+    : '0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)';
+  const primaryTextColor = theme === 'dark' ? '#ffffff' : '#0a0a0a';
+  const secondaryTextColor = theme === 'dark' ? '#B8B8B8' : '#717182';
+
+  const [activeTab, setActiveTab] = useState<'held' | 'created'>('held');
+  const [copiedAddress, setCopiedAddress] = useState<string | null>(null);
+  const [tokens, setTokens] = useState<TokenLaunch[]>([]);
+  const [heldTokens, setHeldTokens] = useState<HeldToken[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [hasVerified, setHasVerified] = useState(false);
-  const [loadingBalances, setLoadingBalances] = useState<Set<string>>(new Set());
-  const [copiedWallet, setCopiedWallet] = useState(false);
-  const [copiedTokens, setCopiedTokens] = useState<Set<string>>(new Set());
-  const [retryCount, setRetryCount] = useState(0);
-  const [showVerificationModal, setShowVerificationModal] = useState(false);
-  const [needsVerification, setNeedsVerification] = useState(false);
-  const [viewMode, setViewMode] = useState<'verified' | 'all' | 'presale'>('verified');
-  const [tokenMetadata, setTokenMetadata] = useState<Record<string, { image?: string }>>({});
+  const [tokenMetadata, setTokenMetadata] = useState<Record<string, TokenMetadata>>({});
+  const [marketData, setMarketData] = useState<Record<string, MarketData>>({});
+  const [claimableTokens, setClaimableTokens] = useState<ClaimableToken[]>([]);
+  const [claiming, setClaiming] = useState<Record<string, boolean>>({});
 
+  const [createdTokens, setCreatedTokens] = useState<CreatedToken[]>([]);
+  const [editingSocialsTokenId, setEditingSocialsTokenId] = useState<string | null>(null);
+  const [socialsForm, setSocialsForm] = useState({
+    website: '',
+    twitter: '',
+    devTwitter: '',
+    discord: '',
+    github: '',
+    devGithub: ''
+  });
 
-  // Check if user needs to verify designated claims
+  // Fetch all ZC tokens
   useEffect(() => {
-    const checkDesignatedClaims = async () => {
-      if (!isPrivyAuthenticated || hasVerified) return;
-      if (!hasTwitter && !hasGithub) return;
-
+    const fetchTokens = async () => {
       try {
-        // Check if there are any designated claims for this user
-        const params = new URLSearchParams();
-        if (twitterUsername) params.append('twitter', twitterUsername);
-        if (githubUsername) params.append('github', githubUsername);
-
-        const response = await fetch(`/api/verify-designated`, {
+        const response = await fetch('/api/tokens', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            twitter: twitterUsername || undefined,
-            github: githubUsername || undefined
-          })
+          body: JSON.stringify({ refresh: false })
         });
-        const data = await response.json();
-
-        if (data.claims && data.claims.length > 0) {
-          // User has designated tokens that need verification
-          const unverifiedClaims = data.claims.filter((c: { verified_wallet?: string; has_verified_wallet?: boolean }) => !c.verified_wallet);
-          if (unverifiedClaims.length > 0) {
-            setNeedsVerification(true);
-          }
-        }
-      } catch (error) {
-        console.error('Error checking designated claims:', error);
-      }
-    };
-
-    checkDesignatedClaims();
-  }, [isPrivyAuthenticated, hasTwitter, hasGithub, twitterUsername, githubUsername, hasVerified]);
-
-  useEffect(() => {
-    console.log('Portfolio Page State:', {
-      ready,
-      isPrivyAuthenticated,
-      wallet: wallet?.toString(),
-      connecting
-    });
-
-    const fetchLaunches = async () => {
-      if (!wallet) {
-        setLaunches([]);
-        setLoading(false);
-        setError(null);
-        return;
-      }
-
-      setError(null);
-      setLoading(true);
-
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
-
-        // Build URL with social profiles if available
-        const params = new URLSearchParams();
-        params.append('creator', wallet.toString());
-        params.append('includeSocials', 'true');
-
-        // Add social profile URLs if connected
-        if (hasTwitter && twitterUsername) {
-          // Send both twitter.com and x.com URLs to match either format in database
-          params.append('twitterUrl', twitterUsername);
-        }
-        if (hasGithub && githubUsername) {
-          params.append('githubUrl', `https://github.com/${githubUsername}`);
-        }
-
-        const response = await fetch(`/api/launches`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            creator: params.get('creator'),
-            includeSocials: params.get('includeSocials') === 'true',
-            twitterUrl: params.get('twitterUrl'),
-            githubUrl: params.get('githubUrl')
-          }),
-          signal: controller.signal
-        });
-        clearTimeout(timeoutId);
-        const data = await response.json();
-
         if (response.ok) {
-          const allLaunches: TokenLaunch[] = data.launches || [];
+          const data = await response.json();
+          setTokens(data.tokens || []);
 
-          // Batch verify tokens - process in chunks for better performance
-          const chunkSize = 5;
-          const chunks = [];
-
-          for (let i = 0; i < allLaunches.length; i += chunkSize) {
-            chunks.push(allLaunches.slice(i, i + chunkSize));
-          }
-
-          const verifiedChunks = await Promise.all(
-            chunks.map(async (chunk) => {
-              return Promise.all(
-                chunk.map(async (launch) => {
-                  try {
-                    // Use the verified property from the database, not the exists check
-                    const verified = launch.verified || false;
-
-                    let userBalance = '--';
-                    if (wallet) {
-                      // Always fetch live balance from API
-                      try {
-                        const balanceResponse = await fetch(`/api/balance/${launch.token_address}/${wallet.toString()}`, {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            tokenAddress: launch.token_address,
-                            walletAddress: wallet.toString()
-                          })
-                        });
-                        if (balanceResponse.ok) {
-                          const balanceData = await balanceResponse.json();
-                          userBalance = balanceData.balance || '--';
-                        }
-                      } catch (error) {
-                        console.error('Error fetching live balance for', launch.token_address, error);
-                        // Keep balance as '--' if fetch fails
-                      }
-                    }
-
-                    return {
-                      ...launch,
-                      verified,
-                      userBalance,
-                      is_creator_designated: launch.is_creator_designated
-                    };
-                  } catch (error) {
-                    console.error(`Error fetching balance for ${launch.token_address}:`, error);
-                    return {
-                      ...launch,
-                      verified: launch.verified || false,
-                      userBalance: '--'
-                    };
-                  }
-                })
-              );
-            })
-          );
-
-          const verifiedLaunches = verifiedChunks.flat();
-
-          // Store all launches, filtering will be done in the UI based on viewMode
-          setLaunches(verifiedLaunches);
-
-          // Fetch metadata for all launches
-          verifiedLaunches.forEach((launch) => {
-            if (launch.token_metadata_url) {
-              fetch(launch.token_metadata_url)
+          // Fetch metadata for all tokens
+          (data.tokens || []).forEach((token: TokenLaunch) => {
+            if (token.token_metadata_url) {
+              fetch(token.token_metadata_url)
                 .then(res => res.json())
                 .then(metadata => {
                   setTokenMetadata(prev => ({
                     ...prev,
-                    [launch.token_address]: { image: metadata.image }
+                    [token.token_address]: metadata
                   }));
                 })
-                .catch(err => console.error(`Error fetching metadata for ${launch.token_address}:`, err));
+                .catch(err => console.error(`Error fetching metadata for ${token.token_address}:`, err));
             }
           });
-        } else {
-          console.error('Failed to fetch launches:', data.error);
-          setError(data.error || 'Failed to fetch launches');
-          setLaunches([]);
         }
-      } catch (error: unknown) {
-        console.error('Error fetching launches:', error);
-        if (error instanceof Error && error.name === 'AbortError') {
-          setError('Request timeout. Please refresh the page.');
-        } else {
-          setError('Failed to load your tokens. Please try again.');
-        }
-        setLaunches([]);
+      } catch (error) {
+        console.error('Error fetching tokens:', error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchLaunches();
-  }, [wallet, retryCount, connecting, isPrivyAuthenticated, ready, hasTwitter, hasGithub, twitterUsername, githubUsername]);
+    fetchTokens();
+  }, []);
 
-  // Fetch presales
+  // Fetch balances for all tokens when wallet is connected
   useEffect(() => {
-    const fetchPresales = async () => {
-      if (!wallet) {
-        setPresales([]);
+    // Show mock data when wallet is not connected (for demonstration)
+    if (!wallet) {
+      setHeldTokens([]);
+      setClaimableTokens([]);
+      setLoading(false);
+      return;
+    }
+
+    if (tokens.length === 0) {
+      setHeldTokens([]);
+      return;
+    }
+
+    const fetchBalances = async () => {
+      setLoading(true);
+      const walletAddress = wallet.toString();
+      const tokensWithBalances: HeldToken[] = [];
+
+      // Fetch balances in batches
+      const BATCH_SIZE = 10;
+      for (let i = 0; i < tokens.length; i += BATCH_SIZE) {
+        const batch = tokens.slice(i, i + BATCH_SIZE);
+        
+        const balancePromises = batch.map(async (token) => {
+          try {
+            const balanceResponse = await fetch(`/api/balance/${token.token_address}/${walletAddress}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                tokenAddress: token.token_address,
+                walletAddress: walletAddress
+              })
+            });
+
+            if (balanceResponse.ok) {
+              const balanceData = await balanceResponse.json();
+              const balance = parseFloat(balanceData.balance || '0');
+
+              // Only include tokens with balance > 0
+              if (balance > 0) {
+                const metadata = tokenMetadata[token.token_address];
+                const name = metadata?.name || token.token_name || 'Unknown Token';
+                const symbol = metadata?.symbol || token.token_symbol || 'UNKNOWN';
+                const image = metadata?.image;
+
+                  // Fetch market data for USD value calculation
+                let usdValue = '$0 USD';
+                let usdValueNumber = 0;
+                try {
+                  const marketResponse = await fetch(`/api/market-data/${token.token_address}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tokenAddress: token.token_address })
+                  });
+
+                  if (marketResponse.ok) {
+                    const marketResult = await marketResponse.json();
+                    if (marketResult.success && marketResult.data) {
+                      const price = marketResult.data.price || 0;
+                      usdValueNumber = balance * price;
+                      usdValue = `$${usdValueNumber.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`;
+                    }
+                  }
+                } catch (error) {
+                  console.error(`Error fetching market data for ${token.token_address}:`, error);
+                }
+
+                // Format balance
+                const formattedBalance = formatBalance(balance);
+
+                const heldToken: HeldToken = {
+                  tokenAddress: token.token_address,
+                  name,
+                  symbol,
+                  balance: formattedBalance,
+                  usdValue,
+                  usdValueNumber,
+                  image
+                };
+                return heldToken;
+              }
+            }
+          } catch (error) {
+            console.error(`Error fetching balance for ${token.token_address}:`, error);
+          }
+          return null;
+        });
+
+        const results = await Promise.all(balancePromises);
+        const validTokens = results.filter((token): token is HeldToken => token !== null);
+        tokensWithBalances.push(...validTokens);
+      }
+
+      // Sort tokens by USD value (descending - highest first)
+      tokensWithBalances.sort((a, b) => {
+        return b.usdValueNumber - a.usdValueNumber; // Descending order (highest USD value first)
+      });
+
+      setHeldTokens(tokensWithBalances);
+      setLoading(false);
+    };
+
+    fetchBalances();
+  }, [wallet, tokens, tokenMetadata]);
+
+  const formatBalance = (balance: number): string => {
+    if (balance >= 1_000_000) {
+      return `${(balance / 1_000_000).toFixed(2)}M`;
+    } else if (balance >= 1_000) {
+      return `${(balance / 1_000).toFixed(2)}K`;
+    }
+    return balance.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  };
+
+  const formatAddress = (address: string): string => {
+    if (!address) return '';
+    const start = address.slice(0, 4);
+    const end = address.slice(-4);
+    return `${start}...${end}`;
+  };
+
+  const handleCopyAddress = async (address: string) => {
+    try {
+      await navigator.clipboard.writeText(address);
+      setCopiedAddress(address);
+      setTimeout(() => setCopiedAddress(null), 2000);
+    } catch (error) {
+      console.error('Failed to copy address:', error);
+    }
+  };
+
+  const handleClaim = async (tokenAddress: string, tokenSymbol: string) => {
+    if (!wallet || !activeWallet) {
+      alert('Please connect your wallet to claim tokens');
+      return;
+    }
+
+    try {
+      setClaiming(prev => ({ ...prev, [tokenAddress]: true }));
+
+      // Step 1: Get claim info
+      const claimInfoResponse = await fetch(`/api/claims/${tokenAddress}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tokenAddress,
+          wallet: wallet.toString()
+        })
+      });
+
+      const claimInfoData: ClaimInfoResult = await claimInfoResponse.json();
+
+      if (!claimInfoResponse.ok || !isClaimInfoResponse(claimInfoData)) {
+        const errorMsg = isApiError(claimInfoData) ? claimInfoData.error : 'Failed to fetch claim info';
+        alert(errorMsg);
         return;
       }
 
-      try {
-        const response = await fetch(`/api/presale?creator=${wallet.toString()}`);
-        const data = await response.json();
-
-        if (response.ok) {
-          setPresales(data.presales || []);
-
-          // Fetch metadata for all presales
-          (data.presales || []).forEach((presale: Presale) => {
-            if (presale.token_metadata_url) {
-              fetch(presale.token_metadata_url)
-                .then(res => res.json())
-                .then(metadata => {
-                  setTokenMetadata(prev => ({
-                    ...prev,
-                    [presale.token_address]: { image: metadata.image }
-                  }));
-                })
-                .catch(err => console.error(`Error fetching metadata for ${presale.token_address}:`, err));
-            }
-          });
-        } else {
-          console.error('Failed to fetch presales:', data.error);
-          setPresales([]);
-        }
-      } catch (error) {
-        console.error('Error fetching presales:', error);
-        setPresales([]);
+      if (!claimInfoData.canClaimNow) {
+        alert(`Tokens are not yet available to claim. ${claimInfoData.timeUntilNextClaim ? `Available in ${claimInfoData.timeUntilNextClaim}` : ''}`);
+        return;
       }
-    };
 
-    fetchPresales();
-  }, [wallet, retryCount]);
+      const claimAmount = claimInfoData.availableToClaim;
 
-  const formatDate = (dateString: string, includeTime: boolean = true) => {
-    const date = new Date(dateString);
-    if (includeTime) {
-      return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit'
+      if (BigInt(claimAmount) <= 0) {
+        alert('No tokens available to claim');
+        return;
+      }
+
+      // Step 2: Get mint transaction from server
+      const mintRequest: MintClaimRequest = {
+        tokenAddress,
+        userWallet: wallet.toString(),
+        claimAmount
+      };
+
+      const mintResponse = await fetch('/api/claims/mint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(mintRequest)
       });
-    } else {
-      return date.toLocaleString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
+
+      const mintData: MintClaimResult = await mintResponse.json();
+
+      if (!mintResponse.ok || !isMintClaimResponse(mintData)) {
+        const errorMsg = isApiError(mintData) ? mintData.error : 'Failed to create mint transaction';
+        alert(errorMsg);
+        return;
+      }
+
+      // Step 3: Deserialize and sign transaction
+      const transactionBuffer = bs58.decode(mintData.transaction);
+      const transaction = Transaction.from(transactionBuffer);
+
+      const serializedTransaction = transaction.serialize({
+        requireAllSignatures: false,
+        verifySignatures: false
       });
-    }
-  };
 
-  const formatNumberShort = (value: number | string) => {
-    const num = typeof value === 'string' ? parseFloat(value) : value;
-    if (isNaN(num)) return '--';
+      const { signedTransaction } = await signTransaction({
+        transaction: serializedTransaction,
+        wallet: activeWallet
+      });
 
-    if (num >= 1_000_000_000) {
-      return `${(num / 1_000_000_000).toFixed(2)}B`;
-    } else if (num >= 1_000_000) {
-      return `${(num / 1_000_000).toFixed(2)}M`;
-    } else if (num >= 1_000) {
-      return `${(num / 1_000).toFixed(2)}K`;
-    }
-    return num.toLocaleString(undefined, { maximumFractionDigits: 2 });
-  };
+      const userSignedTransaction = Transaction.from(signedTransaction);
 
-  const refreshTokenBalance = async (tokenAddress: string, delayMs: number = 0) => {
-    if (!wallet) return;
+      // Step 4: Send signed transaction to server for protocol signing and submission
+      const confirmRequest: ConfirmClaimRequest = {
+        signedTransaction: bs58.encode(userSignedTransaction.serialize({
+          requireAllSignatures: false,
+          verifySignatures: false
+        })),
+        transactionKey: mintData.transactionKey
+      };
 
-    // Set loading state
-    setLoadingBalances(prev => new Set(prev).add(tokenAddress));
+      const submitResponse = await fetch('/api/claims/confirm', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(confirmRequest)
+      });
 
-    try {
-      // Wait for the specified delay to allow blockchain to propagate
-      if (delayMs > 0) {
-        await new Promise(resolve => setTimeout(resolve, delayMs));
+      const submitData: ConfirmClaimResult = await submitResponse.json();
+
+      if (!submitResponse.ok || !isConfirmClaimResponse(submitData)) {
+        const errorMsg = isApiError(submitData) ? submitData.error : 'Failed to confirm claim transaction';
+        alert(errorMsg);
+        return;
       }
 
-      // Retry logic for balance fetch
-      let attempts = 0;
-      const maxAttempts = 3;
-      let balanceData = null;
-
-      while (attempts < maxAttempts && !balanceData) {
-        try {
-          const balanceResponse = await fetch(`/api/balance/${tokenAddress}/${wallet.toString()}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              tokenAddress,
-              walletAddress: wallet.toString()
-            })
-          });
-          if (balanceResponse.ok) {
-            balanceData = await balanceResponse.json();
-          }
-        } catch {
-          attempts++;
-          if (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second between retries
-          }
-        }
-        attempts++;
-      }
-
-      if (balanceData) {
-        const newBalance = balanceData.balance || '0';
-        // Update the balance for this specific token
-        setLaunches(prevLaunches =>
-          prevLaunches.map(launch =>
-            launch.token_address === tokenAddress
-              ? { ...launch, userBalance: newBalance }
-              : launch
-          )
-        );
+      alert(`Successfully claimed ${tokenSymbol} tokens!`);
+      
+      // Refresh held tokens to show updated balance
+      if (wallet) {
+        // Trigger a refresh of held tokens
+        window.location.reload();
       }
     } catch (error) {
-      console.error('Error refreshing balance:', error);
+      console.error('Error claiming tokens:', error);
+      alert(`Failed to claim tokens: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
-      // Remove loading state
-      setLoadingBalances(prev => {
-        const newSet = new Set(prev);
-        newSet.delete(tokenAddress);
-        return newSet;
-      });
+      setClaiming(prev => ({ ...prev, [tokenAddress]: false }));
     }
   };
 
-  // Force refresh - refetches data
-  const forceRefresh = () => {
-    setRetryCount(prev => prev + 1);
+  const handleOpenSocialsModal = (token: CreatedToken) => {
+    setEditingSocialsTokenId(token.id);
+    setSocialsForm({
+      website: token.socials.website || '',
+      twitter: token.socials.twitter || '',
+      devTwitter: token.socials.devTwitter || '',
+      discord: token.socials.discord || '',
+      github: token.socials.github || '',
+      devGithub: token.socials.devGithub || ''
+    });
   };
 
-  const copyWalletAddress = async () => {
-    if (!wallet) return;
-
-    try {
-      await navigator.clipboard.writeText(wallet.toString());
-      setCopiedWallet(true);
-      setTimeout(() => setCopiedWallet(false), 2000);
-    } catch (error) {
-      console.error('Failed to copy wallet address:', error);
-    }
+  const handleCloseSocialsModal = () => {
+    setEditingSocialsTokenId(null);
   };
 
-  const handleConnectWallet = () => {
-    try {
-      if (!authenticated) {
-        login();
-      } else {
-        linkWallet();
-      }
-    } catch (err) {
-      console.error('Failed to connect wallet:', err);
-      setError('Failed to connect wallet. Please try again.');
-    }
+  const handleSocialsInputChange = (field: keyof typeof socialsForm, value: string) => {
+    setSocialsForm(prev => ({
+      ...prev,
+      [field]: value
+    }));
   };
 
-  const copyTokenAddress = async (tokenAddress: string) => {
-    try {
-      await navigator.clipboard.writeText(tokenAddress);
-      setCopiedTokens(prev => new Set(prev).add(tokenAddress));
-      setTimeout(() => {
-        setCopiedTokens(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(tokenAddress);
-          return newSet;
-        });
-      }, 2000);
-    } catch (error) {
-      console.error('Failed to copy token address:', error);
-    }
+  const handleConfirmSocialsEdit = () => {
+    if (!editingSocialsTokenId) return;
+
+    setCreatedTokens(prev =>
+      prev.map(token =>
+        token.id === editingSocialsTokenId
+          ? {
+              ...token,
+              socials: {
+                ...token.socials,
+                ...socialsForm
+              }
+            }
+          : token
+      )
+    );
+
+    setEditingSocialsTokenId(null);
   };
+
+  const editingSocialsToken = editingSocialsTokenId
+    ? createdTokens.find(token => token.id === editingSocialsTokenId) ?? null
+    : null;
 
   return (
-    <>
-      <h1 className="text-7xl font-bold">Portfolio</h1>
+    <div className="flex-1" style={{ padding: '20px 40px', marginLeft: '-20px', marginRight: '-20px' }}>
+      <div className="flex flex-col gap-[20px] w-full">
+      {/* Token Filters (Tabs) */}
+      <div className="flex gap-[12px] items-start">
+        <button
+          onClick={() => setActiveTab('held')}
+          className="rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-colors"
+          style={{
+            fontFamily: 'Inter, sans-serif',
+            backgroundColor: activeTab === 'held'
+              ? (theme === 'dark' ? '#5A5798' : '#403d6d')
+              : (theme === 'dark' ? '#222222' : '#ffffff'),
+            border: activeTab === 'held' ? 'none' : (theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5'),
+            color: activeTab === 'held' ? '#ffffff' : (theme === 'dark' ? '#ffffff' : '#0a0a0a')
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'held') {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#f6f6f7';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'held') {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#222222' : '#ffffff';
+            }
+          }}
+        >
+          Held Tokens
+        </button>
+        <button
+          onClick={() => setActiveTab('created')}
+          className="rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-colors"
+          style={{
+            fontFamily: 'Inter, sans-serif',
+            backgroundColor: activeTab === 'created'
+              ? (theme === 'dark' ? '#5A5798' : '#403d6d')
+              : (theme === 'dark' ? '#222222' : '#ffffff'),
+            border: activeTab === 'created' ? 'none' : (theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5'),
+            color: activeTab === 'created' ? '#ffffff' : (theme === 'dark' ? '#ffffff' : '#0a0a0a')
+          }}
+          onMouseEnter={(e) => {
+            if (activeTab !== 'created') {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#f6f6f7';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (activeTab !== 'created') {
+              e.currentTarget.style.backgroundColor = theme === 'dark' ? '#222222' : '#ffffff';
+            }
+          }}
+        >
+          Created tokens
+        </button>
+      </div>
 
-      {needsVerification && !hasVerified && (
-        <div className="mt-7 p-4 bg-yellow-900/20 border border-yellow-600">
-          <h3 className="font-bold text-yellow-300 mb-2">Verification Required</h3>
-          <p className="text-yellow-200 mb-3">
-            You have designated tokens waiting to be claimed. Please verify your wallet to access them.
-          </p>
-          <button
-            onClick={() => setShowVerificationModal(true)}
-            className="px-4 py-2 bg-yellow-600 text-white hover:bg-yellow-700"
+      {editingSocialsToken && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center bg-[rgba(10,10,10,0.4)] px-5">
+          <div 
+            className="rounded-[16px] w-full max-w-[520px] px-[28px] py-[32px] flex flex-col gap-[24px]"
+            style={{
+              backgroundColor: theme === 'dark' ? '#292929' : '#ffffff',
+              border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+              boxShadow: theme === 'dark' 
+                ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)'
+                : '0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)',
+            }}
           >
-            Verify Now
-          </button>
-        </div>
-      )}
-
-      <p className="mt-7 text-[14px] text-gray-500" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{'//'}Your launched ZC tokens</p>
-
-      {wallet && (
-        <div className="mt-7">
-          <div className="flex items-center">
-            <p className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-              Active Wallet {externalWallet ? '(Connected)' : '(Embedded)'}:
-            </p>
-            <button
-              onClick={copyWalletAddress}
-              className="flex items-center gap-1 ml-2 hover:opacity-80 transition-opacity cursor-pointer"
-              title="Copy wallet address"
-            >
-              <span className="text-[14px] text-[#b2e9fe] font-mono md:hidden" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                {wallet.toString().slice(0, 6)}
-              </span>
-              <span className="hidden md:inline text-[14px] text-[#b2e9fe] font-mono" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                {wallet.toString().slice(0, 6)}...{wallet.toString().slice(-6)}
-              </span>
-              {copiedWallet ? (
-                <svg className="w-4 h-4 text-[#b2e9fe]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            <div className="flex items-start justify-between">
+              <div className="flex flex-col gap-[4px]">
+                <h2 className="text-[20px] font-semibold leading-[1.34] tracking-[-0.2px]" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Edit socials
+                </h2>
+                <p className="text-[14px] leading-[1.6]" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#B8B8B8' : '#717182' }}>
+                  Update public links for {editingSocialsToken?.name ?? 'your project'}.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={handleCloseSocialsModal}
+                className="w-[32px] h-[32px] flex items-center justify-center rounded-full transition-colors"
+                style={{
+                  backgroundColor: 'transparent',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#f6f6f7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = 'transparent';
+                }}
+                aria-label="Close socials editor"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M18 6L6 18" stroke={theme === 'dark' ? '#ffffff' : '#717182'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M6 6L18 18" stroke={theme === 'dark' ? '#ffffff' : '#717182'} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-              ) : (
-                <svg className="w-4 h-4 text-[#b2e9fe]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                </svg>
-              )}
-            </button>
+              </button>
+            </div>
+
+            <div className="flex flex-col gap-[16px]">
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Website
+                </label>
+                <TextInput
+                  placeholder="https://yourproject.io"
+                  value={socialsForm.website}
+                  onChange={event => handleSocialsInputChange('website', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  X (Twitter)
+                </label>
+                <TextInput
+                  placeholder="https://x.com/username"
+                  value={socialsForm.twitter}
+                  onChange={event => handleSocialsInputChange('twitter', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Dev X profile
+                </label>
+                <TextInput
+                  placeholder="https://x.com/dev"
+                  value={socialsForm.devTwitter}
+                  onChange={event => handleSocialsInputChange('devTwitter', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Discord
+                </label>
+                <TextInput
+                  placeholder="https://discord.gg/your-server"
+                  value={socialsForm.discord}
+                  onChange={event => handleSocialsInputChange('discord', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  GitHub
+                </label>
+                <TextInput
+                  placeholder="https://github.com/your-project"
+                  value={socialsForm.github}
+                  onChange={event => handleSocialsInputChange('github', event.target.value)}
+                />
+              </div>
+
+              <div className="flex flex-col gap-[8px]">
+                <label className="text-[14px] font-semibold leading-[16px] tracking-[0.32px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>
+                  Dev GitHub profile
+                </label>
+                <TextInput
+                  placeholder="https://github.com/your-handle"
+                  value={socialsForm.devGithub}
+                  onChange={event => handleSocialsInputChange('devGithub', event.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-[12px]">
+              <button
+                type="button"
+                onClick={handleCloseSocialsModal}
+                className="rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-colors"
+                style={{
+                  fontFamily: 'Inter, sans-serif',
+                  backgroundColor: theme === 'dark' ? '#2a2a2a' : '#ffffff',
+                  border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+                  color: theme === 'dark' ? '#ffffff' : '#0a0a0a',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.backgroundColor = theme === 'dark' ? '#303030' : '#f6f6f7';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#ffffff';
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmSocialsEdit}
+                className="rounded-[6px] px-[16px] py-[12px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-opacity hover:opacity-90"
+                style={{
+                  fontFamily: 'Inter, sans-serif',
+                  backgroundColor: theme === 'dark' ? '#5A5798' : '#403d6d',
+                  color: '#ffffff',
+                }}
+              >
+                Confirm edit
+              </button>
+            </div>
           </div>
         </div>
       )}
 
-      {!ready || connecting ? (
-        <p className="mt-7 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Connecting to wallet...</p>
-      ) : !isPrivyAuthenticated ? (
-        <p className="mt-7 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Please login to view your launches</p>
-      ) : !wallet ? (
-        <button
-          onClick={handleConnectWallet}
-          className="mt-7 text-[14px] text-[#b2e9fe] hover:text-[#d0f2ff] transition-colors cursor-pointer"
-          style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-        >
-          [CLICK TO CONNECT WALLET]
-        </button>
-      ) : loading ? (
-        <p className="mt-6.5 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Loading your tokens...</p>
-      ) : error ? (
-        <div className="mt-7 space-y-4">
-          <p className="text-[14px] text-red-400" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>{error}</p>
-          <button
-            onClick={() => setRetryCount(prev => prev + 1)}
-            className="text-[14px] text-[#b2e9fe] hover:text-[#d0f2ff] transition-colors cursor-pointer"
-            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-          >
-            [TRY AGAIN]
-          </button>
-        </div>
-      ) : (
-        <>
-          {launches.length > 0 && (() => {
-            return (
-              <div className="mt-6.5">
-                <div className="flex items-center gap-4">
-                  <button
-                    onClick={() => setViewMode('verified')}
-                    className={`text-[14px] transition-colors cursor-pointer ${
-                      viewMode === 'verified'
-                        ? 'text-[#b2e9fe]'
-                        : 'text-gray-300 hover:text-[#b2e9fe]'
-                    }`}
-                    style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                  >
-                    [Verified]
-                  </button>
-                  <button
-                    onClick={() => setViewMode('all')}
-                    className={`text-[14px] transition-colors cursor-pointer ${
-                      viewMode === 'all'
-                        ? 'text-[#b2e9fe]'
-                        : 'text-gray-300 hover:text-[#b2e9fe]'
-                    }`}
-                    style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                  >
-                    [All]
-                  </button>
-                  <button
-                    onClick={() => setViewMode('presale')}
-                    className={`text-[14px] transition-colors cursor-pointer ${
-                      viewMode === 'presale'
-                        ? 'text-[#b2e9fe]'
-                        : 'text-gray-300 hover:text-[#b2e9fe]'
-                    }`}
-                    style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                  >
-                    [Presale]
-                  </button>
-                  {wallet && (
-                    <button
-                      onClick={forceRefresh}
-                      disabled={loading}
-                      className="hidden md:block text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                      style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                      title="Refresh data"
-                    >
-                      {loading ? '[REFRESHING...]' : '[REFRESH]'}
-                    </button>
-                  )}
-                </div>
+      {/* Token List */}
+      <div className="flex flex-col gap-[12px] w-full">
+        {activeTab === 'held' && (
+          <>
+            {loading ? (
+              <div className="bg-[#ffffff] border border-[#e5e5e5] rounded-[12px] px-[12px] py-[20px] flex items-center justify-center min-h-[100px]">
+                <p className="text-[14px] text-[#717182]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  Loading tokens...
+                </p>
               </div>
-            );
-          })()}
-
-          <div className="mt-7">
-            {(() => {
-              // Handle presale view
-              if (viewMode === 'presale') {
-                return presales.length === 0 ? (
-                  <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>No presales yet</p>
-                ) : (
-                  <div className="mt-4 space-y-1 max-w-5xl">
-                    {presales.map((presale) => {
-                      const getStatusColor = (status: string) => {
-                        switch (status.toLowerCase()) {
-                          case 'pending':
-                            return 'bg-yellow-500/20 text-yellow-400';
-                          case 'launched':
-                            return 'bg-green-500/20 text-green-400';
-                          case 'cancelled':
-                            return 'bg-red-500/20 text-red-400';
-                          default:
-                            return 'bg-gray-500/20 text-gray-400';
-                        }
-                      };
-
-                      return (
-                        <div key={presale.id} className="pb-6">
-                          <div className="flex items-center gap-4">
-                            {/* Token Icon */}
-                            <div className="flex-shrink-0">
-                              {tokenMetadata[presale.token_address]?.image ? (
-                                <img
-                                  src={tokenMetadata[presale.token_address].image}
-                                  alt={presale.token_symbol || 'Token'}
-                                  className="w-8 h-8 rounded object-cover"
-                                />
-                              ) : (
-                                <div className="w-8 h-8 rounded bg-gray-800"></div>
-                              )}
-                            </div>
-
-                            <div className="flex-1">
-                              {/* Top Row */}
-                              <div className="flex items-baseline justify-between">
-                                <div className="flex items-baseline gap-4">
-                                  <h3 className="text-[14px] text-white font-bold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                    {presale.token_symbol || 'N/A'}
-                                  </h3>
-                                  <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                    {presale.token_name || 'Unnamed Token'}
-                                  </span>
-                                  <span className={`px-2 py-0.5 text-xs font-medium ${getStatusColor(presale.status)}`}>
-                                    {presale.status.toUpperCase()}
-                                  </span>
-                                </div>
-                                <p className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                  Created: {formatDate(presale.created_at)}
-                                </p>
-                              </div>
-
-                              {/* Bottom Row */}
-                              <div className="flex items-center mt-0.5">
-                                <button
-                                  onClick={() => {
-                                    const tabType = presale.status === 'launched' ? 'vesting' : 'presale';
-                                    addTab(tabType, presale.token_address, presale.token_symbol || 'Unknown', pathname);
-                                    router.push(`/presale/${presale.token_address}`);
-                                  }}
-                                  className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                                  style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                                >
-                                  <span className="md:hidden">{presale.status === 'launched' ? '[Vesting]' : '[Presale]'}</span>
-                                  <span className="hidden md:inline">{presale.status === 'launched' ? '[View Vesting]' : '[View Presale]'}</span>
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                );
-              }
-
-              // Handle token views (verified/all)
-              const filteredLaunches = viewMode === 'verified'
-                ? launches.filter(launch => launch.verified)
-                : launches;
-
-              return filteredLaunches.length === 0 ? (
-                <p className="mt-1 text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>No tokens {viewMode === 'verified' ? 'verified' : 'launched'} yet</p>
-              ) : (
-                <div className="mt-4 space-y-1 max-w-5xl">
-                  {filteredLaunches.map((launch) => (
-                    <div key={launch.id} className="pb-6">
-                      <div className="flex items-center gap-4">
-                        {/* Token Icon */}
-                        <div className="flex-shrink-0">
-                          {tokenMetadata[launch.token_address]?.image ? (
-                            <img
-                              src={tokenMetadata[launch.token_address].image}
-                              alt={launch.token_symbol || 'Token'}
-                              className="w-10 h-10 rounded object-cover"
+            ) : heldTokens.length === 0 ? (
+              <div className="bg-[#ffffff] border border-[#e5e5e5] rounded-[12px] px-[12px] py-[20px] flex items-center justify-center min-h-[100px]">
+                <p className="text-[14px] text-[#717182]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                  No ZC tokens found in your wallet
+                </p>
+              </div>
+            ) : (
+              <>
+                {claimableTokens.length > 0 && claimableTokens.map((token) => (
+                  <div
+                    key={`claimable-${token.id}`}
+                    className="border rounded-[12px] px-[12px] py-[20px] flex flex-col gap-[10px]"
+                    style={{
+                      background: theme === 'dark' ? 'linear-gradient(103deg, #2E1F69 13.26%, #944FF4 93.84%)' : 'linear-gradient(103deg, #B09EFA 13.26%, #6A6DE8 93.84%)',
+                      border: `1px solid ${theme === 'dark' ? '#1C1C1C' : '#e5e5e5'}`,
+                      boxShadow: theme === 'dark' ? '0 1px 3px rgba(0, 0, 0, 0.12), 0 1px 2px rgba(0, 0, 0, 0.08)' : '0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03)',
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                  >
+                    <div className="flex gap-[72px] items-center pl-[12px] pr-[20px]">
+                      <div className="flex gap-[14px] items-center">
+                        <div className="bg-[#030213] rounded-[12px] w-[42px] h-[42px] flex items-center justify-center shrink-0 overflow-hidden">
+                          {token.image ? (
+                            <Image
+                              src={token.image}
+                              alt={token.name}
+                              width={30}
+                              height={30}
+                              className="w-[30px] h-[30px]"
                             />
                           ) : (
-                            <div className="w-10 h-10 rounded bg-gray-800"></div>
+                            <Image
+                              src="/logos/z-logo-white.png"
+                              alt="Token"
+                              width={30}
+                              height={30}
+                              className="w-[30px] h-[30px]"
+                            />
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-[8px] w-[148px]">
+                          <div className="flex gap-[6px] items-center text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                            <p className="whitespace-nowrap" style={{ color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>{token.name}</p>
+                            <p className="uppercase whitespace-nowrap" style={{ color: theme === 'dark' ? '#ffffff' : '#0a0a0a' }}>{token.symbol}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyAddress(token.tokenAddress)}
+                            className="flex gap-[4px] items-center cursor-pointer group"
+                            title="Click to copy address"
+                            style={{ fontFamily: 'Inter, sans-serif' }}
+                          >
+                            <p className="text-[14px] font-medium leading-[14px] capitalize transition-opacity group-hover:opacity-80" style={{ color: secondaryTextColor }}>
+                              {formatAddress(token.tokenAddress)}
+                            </p>
+                            {copiedAddress === token.tokenAddress ? (
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                                <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="#327755" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 transition-opacity group-hover:opacity-80">
+                                <path d="M15.002 6.96045L15 4.60049C15 4.44136 14.9368 4.28875 14.8243 4.17622C14.7117 4.0637 14.5591 4.00049 14.4 4.00049H4.6C4.44087 4.00049 4.28826 4.0637 4.17574 4.17622C4.06321 4.28875 4 4.44136 4 4.60049V14.4005C4 14.5596 4.06321 14.7122 4.17574 14.8248C4.28826 14.9373 4.44087 15.0005 4.6 15.0005H7.00195M19.4 20.0005H9.6C9.44087 20.0005 9.28826 19.9373 9.17574 19.8248C9.06321 19.7122 9 19.5596 9 19.4005V9.60049C9 9.44136 9.06321 9.28875 9.17574 9.17622C9.28826 9.0637 9.44087 9.00049 9.6 9.00049H19.4C19.5591 9.00049 19.7117 9.0637 19.8243 9.17622C19.9368 9.28875 20 9.44136 20 9.60049V19.4005C20 19.5596 19.9368 19.7122 19.8243 19.8248C19.7117 19.9373 19.5591 20.0005 19.4 20.0005Z" stroke={secondaryTextColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-col gap-[10px] items-start">
+                        <div className="flex gap-[6px] items-center">
+                          <p className="text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif', color: primaryTextColor }}>
+                            {token.balance} ${token.symbol}
+                          </p>
+                        </div>
+                        <p className="text-[14px] font-medium leading-[14px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: theme === 'dark' ? secondaryTextColor : '#717182' }}>
+                          {token.usdValue}
+                        </p>
+                      </div>
+
+                      <div className="flex gap-[12px] items-center ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => handleClaim(token.tokenAddress, token.symbol)}
+                          disabled={claiming[token.tokenAddress] || !wallet}
+                          className="bg-[#403d6d] rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize text-white transition-opacity hover:opacity-90 disabled:bg-[#403d6d] disabled:text-white disabled:opacity-100 disabled:cursor-default disabled:hover:opacity-90"
+                          style={{ fontFamily: 'Inter, sans-serif' }}
+                        >
+                          {claiming[token.tokenAddress] ? 'Claiming...' : token.claimLabel}
+                        </button>
+                        <p className="max-w-[260px] text-[12px] leading-[16px]" style={{ fontFamily: 'Inter, sans-serif', color: '#ffffff' }}>
+                          You have unclaimed contributor rewards. Claim to instantly add tokens to your wallet.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+
+                {heldTokens.map((token) => (
+                  <div
+                    key={token.tokenAddress}
+                    className="rounded-[12px] px-[12px] py-[20px] flex flex-col gap-[10px]"
+                    style={{
+                      backgroundColor: cardBg,
+                      border: `1px solid ${cardBorder}`,
+                      boxShadow: cardShadow,
+                      fontFamily: 'Inter, sans-serif',
+                    }}
+                  >
+                    <div className="flex gap-[72px] items-center pl-[12px] pr-[20px]">
+                      {/* Token Info */}
+                      <div className="flex gap-[14px] items-center">
+                        {/* Token Icon */}
+                        <div className="bg-[#030213] rounded-[12px] w-[42px] h-[42px] flex items-center justify-center shrink-0 overflow-hidden">
+                          {token.image ? (
+                            <img
+                              src={token.image}
+                              alt={token.name}
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Image
+                              src="/logos/z-logo-white.png"
+                              alt="Token"
+                              width={30}
+                              height={30}
+                              className="w-[30px] h-[30px]"
+                            />
                           )}
                         </div>
 
-                        <div className="flex-1">
-                          {/* Desktop Layout */}
-                          <div className="hidden md:block">
-                            <div className="flex items-baseline justify-between">
-                              <div className="flex items-baseline gap-4">
-                                <h3 className="text-[14px] text-white font-bold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                  {launch.token_symbol || 'N/A'}
-                                </h3>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                    {launch.token_name || 'Unnamed Token'}
-                                  </span>
-                                  {launch.is_creator_designated && (
-                                    <span className="px-1 py-0.5 text-xs font-medium bg-[#b2e9fe]/20 text-[#b2e9fe]" title="You're designated as a creator for this token">
-                                      Designated
-                                    </span>
-                                  )}
-                                  <button
-                                    onClick={() => copyTokenAddress(launch.token_address)}
-                                    className="inline-flex items-center justify-center text-gray-300 hover:text-white transition-colors cursor-pointer"
-                                    title="Copy token address"
-                                  >
-                                    {copiedTokens.has(launch.token_address) ? (
-                                      <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                      </svg>
-                                    ) : (
-                                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                      </svg>
-                                    )}
-                                  </button>
-                                </div>
-                                <div className="flex items-baseline gap-2">
-                                  <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Balance:</span>
-                                  <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                    {launch.userBalance === '--'
-                                    ? '--'
-                                    : parseFloat(launch.userBalance || '0').toLocaleString(undefined, { maximumFractionDigits: 2 })}
-                                  </span>
-                                  {loadingBalances.has(launch.token_address) && (
-                                    <div className="inline-flex items-center">
-                                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                              <p className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                Launched: {formatDate(launch.launch_time)}
+                        {/* Token Text */}
+                        <div className="flex flex-col gap-[8px] w-[148px]">
+                          {/* Token Name */}
+                          <div className="flex gap-[6px] items-center text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                            <p className="whitespace-nowrap" style={{ color: primaryTextColor }}>{token.name}</p>
+                            <p className="uppercase whitespace-nowrap" style={{ color: secondaryTextColor }}>{token.symbol}</p>
+                          </div>
+
+                          {/* Token Address */}
+                          <div className="flex gap-[4px] items-center">
+                            <button
+                              onClick={() => handleCopyAddress(token.tokenAddress)}
+                              className="flex gap-[4px] items-center cursor-pointer group"
+                              style={{ fontFamily: 'Inter, sans-serif' }}
+                              title="Click to copy address"
+                            >
+                              <p className="text-[14px] font-medium leading-[14px] capitalize transition-opacity group-hover:opacity-80" style={{ color: secondaryTextColor }}>
+                                {formatAddress(token.tokenAddress)}
+                              </p>
+                              {copiedAddress === token.tokenAddress ? (
+                                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                                  <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="#327755" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              ) : (
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 transition-opacity group-hover:opacity-80">
+                                  <path d="M15.002 6.96045L15 4.60049C15 4.44136 14.9368 4.28875 14.8243 4.17622C14.7117 4.0637 14.5591 4.00049 14.4 4.00049H4.6C4.44087 4.00049 4.28826 4.0637 4.17574 4.17622C4.06321 4.28875 4 4.44136 4 4.60049V14.4005C4 14.5596 4.06321 14.7122 4.17574 14.8248C4.28826 14.9373 4.44087 15.0005 4.6 15.0005H7.00195M19.4 20.0005H9.6C9.44087 20.0005 9.28826 19.9373 9.17574 19.8248C9.06321 19.7122 9 19.5596 9 19.4005V9.60049C9 9.44136 9.06321 9.28875 9.17574 9.17622C9.28826 9.0637 9.44087 9.00049 9.6 9.00049H19.4C19.5591 9.00049 19.7117 9.0637 19.8243 9.17622C19.9368 9.28875 20 9.44136 20 9.60049V19.4005C20 19.5596 19.9368 19.7122 19.8243 19.8248C19.7117 19.9373 19.5591 20.0005 19.4 20.0005Z" stroke={secondaryTextColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                                </svg>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Token Value */}
+                      <div className="flex gap-[8px] items-center">
+                        <div className="flex flex-col gap-[8px]">
+                          <div className="flex flex-col gap-[10px]">
+                            <div className="flex gap-[6px] items-center">
+                              <p className="text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif', color: primaryTextColor }}>
+                                {token.balance} ${token.symbol}
                               </p>
                             </div>
                           </div>
-
-                          {/* Mobile Layout */}
-                          <div className="md:hidden">
-                            {/* First Row: Symbol, Name, Copy icon, Designated badge */}
-                            <div className="flex items-center gap-2">
-                              <h3 className="text-[14px] text-white font-bold" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                {launch.token_symbol || 'N/A'}
-                              </h3>
-                              <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                {launch.token_name || 'Unnamed Token'}
-                              </span>
-                              <button
-                                onClick={() => copyTokenAddress(launch.token_address)}
-                                className="inline-flex items-center justify-center text-gray-300 hover:text-white transition-colors cursor-pointer"
-                                title="Copy token address"
-                              >
-                                {copiedTokens.has(launch.token_address) ? (
-                                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                                  </svg>
-                                ) : (
-                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                                  </svg>
-                                )}
-                              </button>
-                              {launch.is_creator_designated && (
-                                <span className="px-1 py-0.5 text-xs font-medium bg-[#b2e9fe]/20 text-[#b2e9fe]" title="You're designated as a creator for this token">
-                                  Designated
-                                </span>
-                              )}
-                            </div>
-
-                            {/* Second Row: Balance, Claim button */}
-                            <div className="flex items-center gap-4 mt-0.5">
-                              <div className="flex items-baseline gap-2">
-                                <span className="text-[14px] text-gray-300" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>Bal:</span>
-                                <span className="text-[14px] text-white" style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}>
-                                  {launch.userBalance === '--'
-                                  ? '--'
-                                  : formatNumberShort(launch.userBalance || '0')}
-                                </span>
-                                {loadingBalances.has(launch.token_address) && (
-                                  <div className="inline-flex items-center">
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
-                                  </div>
-                                )}
-                              </div>
-                              <ClaimButton
-                                tokenAddress={launch.token_address}
-                                tokenSymbol={launch.token_symbol || 'TOKEN'}
-                                onSuccess={() => refreshTokenBalance(launch.token_address, 5000)}
-                                disabled={!launch.is_creator_designated && (launch.creator_twitter || launch.creator_github) ? true : false}
-                                disabledReason="Rewards designated"
-                                isMobile={true}
-                              />
-                            </div>
-                          </div>
-
-                      {/* Bottom Row - Desktop */}
-                      <div className="hidden md:flex items-center mt-0.5">
-                        <div className="flex items-center gap-8">
-                          <button
-                            onClick={() => {
-                              addTab('holders', launch.token_address, launch.token_symbol || 'Unknown', pathname);
-                              router.push(`/holders/${launch.token_address}`);
-                            }}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [Manage Holders]
-                          </button>
-                          <button
-                            onClick={() => {
-                              addTab('history', launch.token_address, launch.token_symbol || 'Unknown', pathname);
-                              router.push(`/history/${launch.token_address}`);
-                            }}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [View History]
-                          </button>
+                          <p className="text-[14px] font-medium leading-[14px] capitalize" style={{ fontFamily: 'Inter, sans-serif', color: secondaryTextColor }}>
+                            {token.usdValue}
+                          </p>
                         </div>
-                        <div className="flex items-center gap-4 ml-16">
-                          <button
-                            onClick={() => {
-                              addTab('transfer', launch.token_address, launch.token_symbol || 'Unknown', pathname);
-                              router.push(`/transfer/${launch.token_address}`);
-                            }}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [Transfer]
-                          </button>
-                          <button
-                            onClick={() => window.open(`https://jup.ag/swap?sell=${launch.token_address}&buy=So11111111111111111111111111111111111111112`, '_blank')}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [Sell]
-                          </button>
-                          <button
-                            onClick={() => {
-                              addTab('burn', launch.token_address, launch.token_symbol || 'Unknown', pathname);
-                              router.push(`/burn/${launch.token_address}`);
-                            }}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [Burn]
-                          </button>
-                        </div>
-                        <div className="ml-auto">
-                          <ClaimButton
-                            tokenAddress={launch.token_address}
-                            tokenSymbol={launch.token_symbol || 'TOKEN'}
-                            onSuccess={() => refreshTokenBalance(launch.token_address, 5000)}
-                            disabled={!launch.is_creator_designated && (launch.creator_twitter || launch.creator_github) ? true : false}
-                            disabledReason="Rewards designated"
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </>
+            )}
+          </>
+        )}
+
+        {activeTab === 'created' && (
+          <>
+            {createdTokens.length === 0 ? (
+              <div
+                className="rounded-[12px] px-[12px] py-[20px] flex items-center justify-center min-h-[100px]"
+                style={{
+                  backgroundColor: cardBg,
+                  border: `1px solid ${cardBorder}`,
+                  boxShadow: cardShadow,
+                  fontFamily: 'Inter, sans-serif',
+                }}
+              >
+                <p className="text-[14px]" style={{ fontFamily: 'Inter, sans-serif', color: secondaryTextColor }}>
+                  No created tokens yet
+                </p>
+              </div>
+            ) : (
+              createdTokens.map((token) => (
+                <div
+                  key={token.id}
+                  className="rounded-[12px] px-[12px] py-[20px] flex flex-col gap-[10px]"
+                  style={{
+                    backgroundColor: cardBg,
+                    border: `1px solid ${cardBorder}`,
+                    boxShadow: cardShadow,
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  <div className="flex items-center justify-between gap-[20px] pl-[12px] pr-[20px]">
+                    <div className="flex gap-[14px] items-center">
+                      <div className="bg-[#030213] rounded-[12px] w-[42px] h-[42px] flex items-center justify-center shrink-0 overflow-hidden">
+                        {token.image ? (
+                          <Image
+                            src={token.image}
+                            alt={token.name}
+                            width={30}
+                            height={30}
+                            className="w-[30px] h-[30px]"
                           />
-                        </div>
+                        ) : (
+                          <div className="w-[30px] h-[30px] rounded-[8px] bg-[#403d6d]" />
+                        )}
                       </div>
-
-                      {/* Bottom Rows - Mobile */}
-                      <div className="md:hidden flex flex-col gap-2 mt-0.5">
-                        {/* First Row: Holders, History */}
-                        <div className="flex items-center gap-4">
-                          <button
-                            onClick={() => {
-                              addTab('holders', launch.token_address, launch.token_symbol || 'Unknown', pathname);
-                              router.push(`/holders/${launch.token_address}`);
-                            }}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [Holders]
-                          </button>
-                          <button
-                            onClick={() => {
-                              addTab('history', launch.token_address, launch.token_symbol || 'Unknown', pathname);
-                              router.push(`/history/${launch.token_address}`);
-                            }}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [History]
-                          </button>
+                      <div className="flex flex-col gap-[8px] w-[148px]">
+                        <div className="flex gap-[6px] items-center text-[16px] font-medium leading-[1.4]" style={{ fontFamily: 'Inter, sans-serif' }}>
+                          <p className="whitespace-nowrap" style={{ color: primaryTextColor }}>{token.name}</p>
+                          <p className="uppercase whitespace-nowrap" style={{ color: secondaryTextColor }}>{token.symbol}</p>
                         </div>
-
-                        {/* Second Row: Transfer, Sell, Burn */}
-                        <div className="flex items-center gap-4">
+                        <div className="flex gap-[4px] items-center">
                           <button
-                            onClick={() => {
-                              addTab('transfer', launch.token_address, launch.token_symbol || 'Unknown', pathname);
-                              router.push(`/transfer/${launch.token_address}`);
-                            }}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
+                            type="button"
+                            onClick={() => handleCopyAddress(token.tokenAddress)}
+                            className="flex gap-[4px] items-center cursor-pointer group"
+                            style={{ fontFamily: 'Inter, sans-serif' }}
+                            title="Click to copy address"
                           >
-                            [Transfer]
-                          </button>
-                          <button
-                            onClick={() => window.open(`https://jup.ag/swap?sell=${launch.token_address}&buy=So11111111111111111111111111111111111111112`, '_blank')}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [Sell]
-                          </button>
-                          <button
-                            onClick={() => {
-                              addTab('burn', launch.token_address, launch.token_symbol || 'Unknown', pathname);
-                              router.push(`/burn/${launch.token_address}`);
-                            }}
-                            className="text-[14px] text-gray-300 hover:text-[#b2e9fe] transition-colors cursor-pointer"
-                            style={{ fontFamily: 'Monaco, Menlo, "Courier New", monospace' }}
-                          >
-                            [Burn]
+                            <p className="text-[14px] font-medium leading-[14px] capitalize transition-opacity group-hover:opacity-80" style={{ color: secondaryTextColor }}>
+                              {formatAddress(token.tokenAddress)}
+                            </p>
+                            {copiedAddress === token.tokenAddress ? (
+                              <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0">
+                                <path d="M11.6667 3.5L5.25 9.91667L2.33333 7" stroke="#327755" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                              </svg>
+                            ) : (
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="shrink-0 transition-opacity group-hover:opacity-80">
+                                <path d="M15.002 6.96045L15 4.60049C15 4.44136 14.9368 4.28875 14.8243 4.17622C14.7117 4.0637 14.5591 4.00049 14.4 4.00049H4.6C4.44087 4.00049 4.28826 4.0637 4.17574 4.17622C4.06321 4.28875 4 4.44136 4 4.60049V14.4005C4 14.5596 4.06321 14.7122 4.17574 14.8248C4.28826 14.9373 4.44087 15.0005 4.6 15.0005H7.00195M19.4 20.0005H9.6C9.44087 20.0005 9.28826 19.9373 9.17574 19.8248C9.06321 19.7122 9 19.5596 9 19.4005V9.60049C9 9.44136 9.06321 9.28875 9.17574 9.17622C9.28826 9.0637 9.44087 9.00049 9.6 9.00049H19.4C19.5591 9.00049 19.7117 9.0637 19.8243 9.17622C19.9368 9.28875 20 9.44136 20 9.60049V19.4005C20 19.5596 19.9368 19.7122 19.8243 19.8248C19.7117 19.9373 19.5591 20.0005 19.4 20.0005Z" stroke={secondaryTextColor} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                              </svg>
+                            )}
                           </button>
                         </div>
                       </div>
                     </div>
-                      </div>
+
+                    <div className="flex items-center gap-[20px]">
+                      <button
+                        type="button"
+                        className="bg-[#403d6d] rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize text-white transition-opacity hover:opacity-90"
+                        style={{ fontFamily: 'Inter, sans-serif' }}
+                      >
+                        {token.claimLabel}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSocialsModal(token)}
+                        className="rounded-[6px] px-[12px] py-[10px] text-[12px] font-semibold leading-[12px] tracking-[0.24px] capitalize transition-colors"
+                        style={{
+                          fontFamily: 'Inter, sans-serif',
+                          backgroundColor: theme === 'dark' ? '#2a2a2a' : '#ffffff',
+                          border: theme === 'dark' ? '1px solid #1C1C1C' : '1px solid #e5e5e5',
+                          color: theme === 'dark' ? '#ffffff' : '#0a0a0a',
+                        }}
+                        onMouseEnter={(e) => {
+                          if (theme === 'dark') {
+                            e.currentTarget.style.backgroundColor = '#303030';
+                          } else {
+                            e.currentTarget.style.backgroundColor = '#f6f6f7';
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.backgroundColor = theme === 'dark' ? '#2a2a2a' : '#ffffff';
+                        }}
+                      >
+                        {token.socialsLabel}
+                      </button>
                     </div>
-                  ))}
+                  </div>
                 </div>
-              );
-            })()}
-          </div>
-        </>
-      )}
-
-      <SecureVerificationModal
-        isOpen={showVerificationModal}
-        onClose={() => setShowVerificationModal(false)}
-        onSuccess={() => {
-          setHasVerified(true);
-          setNeedsVerification(false);
-          // Reload launches to show newly accessible tokens
-          window.location.reload();
-        }}
-      />
-    </>
+              ))
+            )}
+          </>
+        )}
+      </div>
+      </div>
+    </div>
   );
 }

@@ -1,81 +1,66 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
 import { usePathname } from 'next/navigation';
 import { Sidebar } from '@/components/Sidebar';
 import { Header } from '@/components/Header';
-import { LineNumbers } from '@/components/LineNumbers';
 import { Footer } from '@/components/Footer';
 import { TabProvider } from '@/contexts/TabContext';
+import { useTheme } from '@/contexts/ThemeContext';
 
 function VscodeLayoutContent({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const [lineCount, setLineCount] = useState(1);
-  const contentRef = useRef<HTMLDivElement>(null);
   const pathname = usePathname();
+  const { theme } = useTheme();
 
-  useEffect(() => {
-    const updateLineCount = () => {
-      if (contentRef.current) {
-        const contentHeight = contentRef.current.scrollHeight;
-        const lineHeight = 24;
-        const calculatedLines = Math.max(Math.ceil(contentHeight / lineHeight), 1);
-        setLineCount(calculatedLines);
-      }
-    };
+  const isFaqPage = pathname === '/faq';
+  const isSwapPage = pathname === '/swap';
+  const isLaunchPage = pathname === '/launch';
+  const isProjectsPage = pathname === '/projects' || pathname?.startsWith('/projects/');
+  const isProposalsPage = pathname === '/decisions';
+  const isStakePage = pathname === '/stake';
+  const isPortfolioPage = pathname === '/portfolio';
+  const isLightPage = isFaqPage || isSwapPage || isLaunchPage || isProjectsPage || isProposalsPage || isStakePage || isPortfolioPage;
 
-    // Initial update
-    const frameId = requestAnimationFrame(updateLineCount);
-
-    // Recalculate on window resize
-    window.addEventListener('resize', updateLineCount);
-
-    // Watch for DOM changes (when content loads dynamically)
-    let observer: MutationObserver | null = null;
-    if (contentRef.current) {
-      observer = new MutationObserver(updateLineCount);
-      observer.observe(contentRef.current, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        characterData: true
-      });
-    }
-
-    return () => {
-      cancelAnimationFrame(frameId);
-      window.removeEventListener('resize', updateLineCount);
-      if (observer) {
-        observer.disconnect();
-      }
-    };
-  }, [pathname, children]);
+  const backgroundColor = theme === 'dark' ? '#292929' : '#ffffff';
 
   return (
-    <div className="min-h-screen text-white" style={{ backgroundColor: '#1F1F1F' }}>
+    <div 
+      className="min-h-screen" 
+      style={{ 
+        backgroundColor,
+        color: theme === 'dark' ? '#ffffff' : '#0a0a0a'
+      }}
+    >
       <Sidebar />
 
       {/* Main Content */}
       <main
-        className="h-screen overflow-y-auto ml-[40px] md:ml-[300px]"
+        className="h-screen overflow-y-auto ml-[228px]"
+        style={{
+          backgroundColor
+        }}
       >
         <Header />
 
-        {/* Content Area with Line Numbers */}
+        {/* Content Area */}
         <div className="flex">
-          <LineNumbers lineCount={lineCount} />
-
           {/* Main Content Column */}
-          <div ref={contentRef} className="flex-1 px-4 md:px-8 py-12">
+          <div 
+            className="flex-1"
+            style={{
+              paddingLeft: '20px',
+              paddingRight: '20px',
+              paddingTop: '20px',
+              paddingBottom: '20px'
+            }}
+          >
             {children}
           </div>
         </div>
       </main>
-
-      <Footer />
     </div>
   );
 }

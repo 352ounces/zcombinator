@@ -20,12 +20,18 @@ class MockBirdeyeAPI {
       market_cap: number;
     } | null;
   }> {
+    // Normalize address (case-insensitive comparison)
+    const normalizedAddress = tokenAddress.toLowerCase();
+    
     // Check if we have mock data for this token
-    const marketData = MOCK_MARKET_DATA[tokenAddress];
+    const marketDataKey = Object.keys(MOCK_MARKET_DATA).find(
+      key => key.toLowerCase() === normalizedAddress
+    );
+    const marketData = marketDataKey ? MOCK_MARKET_DATA[marketDataKey] : null;
 
     if (!marketData) {
       // Generate random market data for unknown tokens
-      const token = MOCK_TOKENS.find((t) => t.token_address === tokenAddress);
+      const token = MOCK_TOKENS.find((t) => t.token_address.toLowerCase() === normalizedAddress);
 
       if (!token) {
         return {

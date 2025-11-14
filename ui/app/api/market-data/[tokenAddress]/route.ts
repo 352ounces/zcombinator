@@ -8,9 +8,17 @@ export async function POST(
     const body = await request.json();
     const tokenAddress = body.tokenAddress;
 
+    if (!tokenAddress) {
+      return NextResponse.json(
+        { success: false, data: null, error: 'Token address is required' },
+        { status: 400 }
+      );
+    }
+
     // Use mock Birdeye if API key not available
     if (shouldUseMockBirdeye()) {
       const mockData = await mockBirdeye.getTokenMarketData(tokenAddress);
+      console.log('Mock market data for', tokenAddress, ':', mockData);
       return NextResponse.json(mockData);
     }
 
@@ -27,17 +35,29 @@ export async function POST(
 
     if (!response.ok) {
       return NextResponse.json(
-        { error: 'Failed to fetch market data' },
+        { success: false, data: null, error: 'Failed to fetch market data' },
         { status: response.status }
       );
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    // Normalize Birdeye API response to match mock format
+    return NextResponse.json({
+      success: true,
+      data: {
+        price: data.price || 0,
+        liquidity: data.liquidity || 0,
+        total_supply: data.totalSupply || 0,
+        circulating_supply: data.circulatingSupply || 0,
+        fdv: data.fdv || 0,
+        market_cap: data.marketCap || data.market_cap || 0,
+        price_change_24h: data.priceChange24h || data.price_change_24h
+      }
+    });
   } catch (error) {
     console.error('Error fetching market data:', error);
     return NextResponse.json(
-      { error: 'Failed to fetch market data' },
+      { success: false, data: null, error: 'Failed to fetch market data' },
       { status: 500 }
     );
   }
