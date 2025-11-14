@@ -74,6 +74,15 @@
             ]
           },
           {
+            "group": "DAMM Liquidity endpoints",
+            "pages": [
+              "api-reference/damm-liquidity/withdraw-build",
+              "api-reference/damm-liquidity/withdraw-confirm",
+              "api-reference/damm-liquidity/deposit-build",
+              "api-reference/damm-liquidity/deposit-confirm"
+            ]
+          },
+          {
             "group": "Utility endpoints",
             "pages": [
               "api-reference/utility/health",

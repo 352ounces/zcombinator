@@ -29,6 +29,7 @@ import {
 import claimsRouter from './routes/claims';
 import presaleRouter from './routes/presale';
 import feeClaimRouter from './routes/fee-claim';
+import dammLiquidityRouter from './routes/damm-liquidity';
 
 dotenv.config();
 
@@ -98,6 +99,9 @@ app.use('/presale', presaleRouter);
 
 // Mount fee claim routes
 app.use('/fee-claim', feeClaimRouter);
+
+// Mount DAMM liquidity routes
+app.use('/damm', dammLiquidityRouter);
 
 // Launch token endpoint - returns unsigned transaction
 app.post('/launch', async (req: Request, res: Response) => {
@@ -350,6 +354,10 @@ async function startServer() {
       console.log(`  POST /confirm-launch            - Confirm partially signed transaction`);
       console.log(`  POST /fee-claim/claim           - Build fee claim transaction for Meteora DAMM v2`);
       console.log(`  POST /fee-claim/confirm         - Confirm fee claim transaction`);
+      console.log(`  POST /damm/withdraw/build       - Build DAMM liquidity withdrawal transaction`);
+      console.log(`  POST /damm/withdraw/confirm     - Confirm DAMM withdrawal (manager only)`);
+      console.log(`  POST /damm/deposit/build        - Build DAMM liquidity deposit transaction`);
+      console.log(`  POST /damm/deposit/confirm      - Confirm DAMM deposit (manager only)`);
       console.log(`  GET  /claims/:tokenAddress      - Get claim eligibility info`);
       console.log(`  POST /claims/mint               - Create unsigned mint transaction`);
       console.log(`  POST /claims/confirm            - Confirm claim transaction`);
