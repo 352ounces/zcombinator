@@ -52,14 +52,14 @@
         "tab": "API Reference",
         "groups": [
           {
-            "group": "Launch endpoints",
+            "group": "Launch",
             "pages": [
               "api-reference/launch/create",
               "api-reference/launch/confirm"
             ]
           },
           {
-            "group": "Claims endpoints",
+            "group": "Claim token emissions (dev)",
             "pages": [
               "api-reference/claims/eligibility",
               "api-reference/claims/mint",
@@ -67,7 +67,23 @@
             ]
           },
           {
-            "group": "Utility endpoints",
+            "group": "Claim LP fees",
+            "pages": [
+              "api-reference/fee-claim/claim",
+              "api-reference/fee-claim/confirm"
+            ]
+          },
+          {
+            "group": "Manage AMM liquidity",
+            "pages": [
+              "api-reference/damm-liquidity/withdraw-build",
+              "api-reference/damm-liquidity/withdraw-confirm",
+              "api-reference/damm-liquidity/deposit-build",
+              "api-reference/damm-liquidity/deposit-confirm"
+            ]
+          },
+          {
+            "group": "Utility",
             "pages": [
               "api-reference/utility/health",
               "api-reference/utility/verify-token"
@@ -127,6 +143,5 @@
       "x": "https://x.com/zcombinatorio",
       "github": "https://github.com/zcombinatorio/zcombinator"
     }
-  },
-  "css": "/custom.css"
+  }
 }
