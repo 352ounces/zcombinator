@@ -153,10 +153,10 @@ router.post('/withdraw/build', dammLiquidityLimiter, async (req: Request, res: R
       });
     }
 
-    // Validate withdrawal percentage
-    if (typeof withdrawalPercentage !== 'number' || withdrawalPercentage <= 0 || withdrawalPercentage > 100) {
+    // Validate withdrawal percentage (maximum 15%)
+    if (typeof withdrawalPercentage !== 'number' || withdrawalPercentage <= 0 || withdrawalPercentage > 15) {
       return res.status(400).json({
-        error: 'withdrawalPercentage must be a number between 0 and 100'
+        error: 'withdrawalPercentage must be a number between 0 and 15'
       });
     }
 
