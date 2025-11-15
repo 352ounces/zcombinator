@@ -727,6 +727,10 @@ router.post('/withdraw/confirm', dammLiquidityLimiter, async (req: Request, res:
       // Validate ATA instructions
       if (programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
         if (instruction.data.length < 1 || instruction.data[0] !== 1) {
+          const opcode = instruction.data.length > 0 ? instruction.data[0] : 'undefined';
+          console.log(`  ⚠️  VALIDATION FAILED: Unauthorized ATA instruction in instruction ${i}`);
+          console.log(`    Opcode: ${opcode}`);
+          console.log(`    Expected: 1 (CreateIdempotent)`);
           return res.status(400).json({
             error: 'Invalid transaction: unauthorized ATA instruction detected',
             details: `Instruction ${i} invalid ATA opcode`
@@ -1255,6 +1259,8 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
           !programId.equals(METEORA_CP_AMM_PROGRAM_ID) &&
           !programId.equals(METEORA_DAMM_V2_PROGRAM_ID) &&
           !programId.equals(SystemProgram.programId)) {
+        console.log(`  ⚠️  VALIDATION FAILED: Unauthorized program in instruction ${i}`);
+        console.log(`    Program ID: ${programId.toBase58()}`);
         return res.status(400).json({
           error: 'Invalid transaction: unauthorized program instruction detected',
           details: `Instruction ${i} uses unauthorized program: ${programId.toBase58()}`
@@ -1265,7 +1271,11 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
       if (programId.equals(TOKEN_PROGRAM_ID)) {
         const opcode = instruction.data[0];
 
-        if (opcode !== 3 && opcode !== 9 && opcode !== 12) {
+        // Allowed opcodes:
+        // 3 = Transfer, 9 = InitializeAccount, 12 = TransferChecked, 17 = SyncNative (for WSOL)
+        if (opcode !== 3 && opcode !== 9 && opcode !== 12 && opcode !== 17) {
+          console.log(`  ⚠️  VALIDATION FAILED: Unauthorized token instruction opcode ${opcode} in instruction ${i}`);
+          console.log(`    Allowed opcodes: 3 (Transfer), 9 (InitializeAccount), 12 (TransferChecked), 17 (SyncNative)`);
           return res.status(400).json({
             error: 'Invalid transaction: unauthorized token instruction detected',
             details: `Instruction ${i} has invalid opcode: ${opcode}`
@@ -1280,6 +1290,9 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
 
             // Authority must be either manager wallet (for initial transfer) or LP owner (for add liquidity)
             if (!authority.equals(managerAddress) && !authority.equals(lpOwnerAddress)) {
+              console.log(`  ⚠️  VALIDATION FAILED: Invalid transfer authority in instruction ${i}`);
+              console.log(`    Authority: ${authority.toBase58()}`);
+              console.log(`    Expected: ${managerAddress.toBase58()} (manager) or ${lpOwnerAddress.toBase58()} (LP owner)`);
               return res.status(400).json({
                 error: 'Invalid transaction: transfer authority must be manager or LP owner',
                 details: `Instruction ${i} authority mismatch`
@@ -1302,7 +1315,9 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
               ];
 
               if (!validDestinations.includes(destination.toBase58())) {
-                console.log(`  ⚠️  Blocked unauthorized manager transfer to ${destination.toBase58()}`);
+                console.log(`  ⚠️  VALIDATION FAILED: Unauthorized manager transfer destination in instruction ${i}`);
+                console.log(`    Destination: ${destination.toBase58()}`);
+                console.log(`    Valid destinations: ${validDestinations.join(', ')}`);
                 return res.status(400).json({
                   error: 'Invalid transaction: transfer from manager must go to LP owner',
                   details: `Instruction ${i} invalid destination`
@@ -1347,7 +1362,9 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
               ];
 
               if (!validDestinations.includes(destination.toBase58())) {
-                console.log(`  ⚠️  SECURITY: Blocked unauthorized LP owner transfer to ${destination.toBase58()}`);
+                console.log(`  ⚠️  VALIDATION FAILED: Unauthorized LP owner transfer destination in instruction ${i}`);
+                console.log(`    Destination: ${destination.toBase58()}`);
+                console.log(`    Valid destinations: ${validDestinations.join(', ')}`);
                 return res.status(400).json({
                   error: 'Invalid transaction: LP owner transfers must go to pool vaults only',
                   details: `Instruction ${i} unauthorized destination for LP owner transfer`
@@ -1391,6 +1408,8 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
         const instructionType = instruction.data.readUInt32LE(0);
 
         if (instructionType !== 2) {
+          console.log(`  ⚠️  VALIDATION FAILED: Unauthorized system program instruction type ${instructionType} in instruction ${i}`);
+          console.log(`    Expected: 2 (Transfer)`);
           return res.status(400).json({
             error: 'Invalid transaction: unauthorized system program instruction',
             details: `Instruction ${i} invalid type`
@@ -1403,6 +1422,9 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
 
           // Validate sender is manager or LP owner
           if (!from.equals(managerAddress) && !from.equals(lpOwnerAddress)) {
+            console.log(`  ⚠️  VALIDATION FAILED: Invalid system transfer sender in instruction ${i}`);
+            console.log(`    From: ${from.toBase58()}`);
+            console.log(`    Expected: ${managerAddress.toBase58()} (manager) or ${lpOwnerAddress.toBase58()} (LP owner)`);
             return res.status(400).json({
               error: 'Invalid transaction: system transfer must be from manager or LP owner',
               details: `Instruction ${i} from mismatch`
@@ -1413,7 +1435,9 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
           if (from.equals(managerAddress)) {
             // Manager can only send to LP owner
             if (!to.equals(lpOwnerAddress)) {
-              console.log(`  ⚠️  Blocked unauthorized manager SOL transfer to ${to.toBase58()}`);
+              console.log(`  ⚠️  VALIDATION FAILED: Unauthorized manager SOL transfer in instruction ${i}`);
+              console.log(`    To: ${to.toBase58()}`);
+              console.log(`    Expected: ${lpOwnerAddress.toBase58()} (LP owner)`);
               return res.status(400).json({
                 error: 'Invalid transaction: manager SOL transfer must be to LP owner',
                 details: `Instruction ${i} to mismatch`
@@ -1435,7 +1459,8 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
             ];
 
             if (!validDestinations.includes(to.toBase58())) {
-              console.log(`  ⚠️  SECURITY: Blocked unauthorized LP owner SOL transfer to ${to.toBase58()}`);
+              console.log(`  ⚠️  VALIDATION FAILED: Unauthorized LP owner SOL transfer in instruction ${i}`);
+              console.log(`    To: ${to.toBase58()}`);
               console.log(`    Valid destinations: ${validDestinations.join(', ')}`);
               return res.status(400).json({
                 error: 'Invalid transaction: LP owner SOL transfers must be to WSOL account only',
@@ -1451,7 +1476,9 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
             const maxTokenB = new BN(depositData.tokenBAmount);
 
             if (transferAmount.gt(maxTokenB)) {
-              console.log(`  ⚠️  Blocked excessive SOL transfer: ${transferAmount.toString()} > ${maxTokenB.toString()}`);
+              console.log(`  ⚠️  VALIDATION FAILED: Excessive SOL transfer amount in instruction ${i}`);
+              console.log(`    Amount: ${transferAmount.toString()} lamports`);
+              console.log(`    Maximum allowed: ${maxTokenB.toString()} lamports`);
               return res.status(400).json({
                 error: 'Invalid transaction: SOL transfer amount exceeds expected',
                 details: `Instruction ${i} amount too large`
@@ -1464,6 +1491,10 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
       // Validate ATA instructions
       if (programId.equals(ASSOCIATED_TOKEN_PROGRAM_ID)) {
         if (instruction.data.length < 1 || instruction.data[0] !== 1) {
+          const opcode = instruction.data.length > 0 ? instruction.data[0] : 'undefined';
+          console.log(`  ⚠️  VALIDATION FAILED: Unauthorized ATA instruction in instruction ${i}`);
+          console.log(`    Opcode: ${opcode}`);
+          console.log(`    Expected: 1 (CreateIdempotent)`);
           return res.status(400).json({
             error: 'Invalid transaction: unauthorized ATA instruction detected',
             details: `Instruction ${i} invalid ATA opcode`
