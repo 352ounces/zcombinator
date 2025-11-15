@@ -1420,14 +1420,28 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
               });
             }
           } else if (from.equals(lpOwnerAddress)) {
-            // CRITICAL: LP owner SOL transfers during deposit should NOT occur
-            // (SOL wrapping is handled by Meteora SDK internally)
-            // If this instruction exists, it's likely malicious
-            console.log(`  ⚠️  SECURITY: Blocked unexpected LP owner SOL transfer to ${to.toBase58()}`);
-            return res.status(400).json({
-              error: 'Invalid transaction: LP owner SOL transfers not allowed in deposit flow',
-              details: `Instruction ${i} unauthorized LP owner SOL transfer`
-            });
+            // LP owner SOL transfers are allowed only for SOL wrapping (WSOL)
+            // Valid destinations: LP owner's WSOL ATA (for wrapping)
+            const lpOwnerWsolAta = await getAssociatedTokenAddress(
+              NATIVE_MINT,
+              lpOwnerAddress,
+              false,
+              TOKEN_PROGRAM_ID
+            );
+
+            const validDestinations = [
+              lpOwnerWsolAta.toBase58(),
+              lpOwnerAddress.toBase58(), // Allow self-transfers for account creation
+            ];
+
+            if (!validDestinations.includes(to.toBase58())) {
+              console.log(`  ⚠️  SECURITY: Blocked unauthorized LP owner SOL transfer to ${to.toBase58()}`);
+              console.log(`    Valid destinations: ${validDestinations.join(', ')}`);
+              return res.status(400).json({
+                error: 'Invalid transaction: LP owner SOL transfers must be to WSOL account only',
+                details: `Instruction ${i} unauthorized destination for LP owner SOL transfer`
+              });
+            }
           }
 
           // Validate amount
