@@ -19,17 +19,74 @@
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import * as crypto from 'crypto';
+import nacl from 'tweetnacl';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { Connection, Keypair, Transaction } from '@solana/web3.js';
+import {
+  MintClaimRequestBody,
+  ConfirmClaimRequestBody,
+  MintClaimResponseBody,
+  ConfirmClaimResponseBody,
+  ClaimInfoResponseBody,
+  ErrorResponseBody
+} from './types/server';
+import { Connection, Keypair, Transaction, PublicKey, ComputeBudgetProgram, SystemProgram } from '@solana/web3.js';
+import {
+  createAssociatedTokenAccountIdempotentInstruction,
+  createMintToInstruction,
+  getMint,
+  TOKEN_PROGRAM_ID,
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  createTransferInstruction,
+  getAccount
+} from '@solana/spl-token';
 import bs58 from 'bs58';
+import BN from 'bn.js';
+import { DynamicBondingCurveClient } from "@meteora-ag/dynamic-bonding-curve-sdk";
 import {
   prepareTokenLaunch,
   confirmAndRecordLaunch,
+  generateTokenKeypair
 } from './lib/launchService';
 import claimsRouter from './routes/claims';
 import presaleRouter from './routes/presale';
-import feeClaimRouter from './routes/fee-claim';
-import dammLiquidityRouter from './routes/damm-liquidity';
+import {
+  getTokenLaunchTime,
+  hasRecentClaim,
+  hasRecentClaimByWallet,
+  getTotalClaimedByWallet,
+  preRecordClaim,
+  getTokenCreatorWallet,
+  getDesignatedClaimByToken,
+  getVerifiedClaimWallets,
+  getPresaleByTokenAddress,
+  getUserPresaleContribution,
+  getPresaleBids,
+  getTotalPresaleBids,
+  recordPresaleBid,
+  getPresaleBidBySignature,
+  getEmissionSplits,
+  getWalletEmissionSplit,
+  hasClaimRights
+} from './lib/db';
+import { calculateClaimEligibility } from './lib/helius';
+import {
+  calculateVestingInfo,
+  recordPresaleClaim,
+  getPresaleStats,
+  initializePresaleClaims,
+  type VestingInfo
+} from './lib/presaleVestingService';
+import { decryptEscrowKeypair } from './lib/presale-escrow';
+import { decrypt } from './lib/crypto';
+import { updatePresaleStatus } from './lib/db';
+import {
+  isValidSolanaAddress,
+  isValidTransactionSignature,
+} from './lib/validation';
+import { verifyPresaleTokenTransaction } from './lib/solana-verification';
 
 dotenv.config();
 
@@ -54,6 +111,10 @@ const limiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: 'Too many requests from this IP, please try again later.',
+  skip: (req) => {
+    // Skip rate limiting for presale claim endpoints
+    return req.path.includes('/presale/') && req.path.includes('/claims');
+  }
 });
 
 // Separate rate limiter for presale claim endpoints (more lenient)
@@ -96,12 +157,6 @@ app.use('/claims', claimsRouter);
 
 // Mount presale routes
 app.use('/presale', presaleRouter);
-
-// Mount fee claim routes
-app.use('/fee-claim', feeClaimRouter);
-
-// Mount DAMM liquidity routes
-app.use('/damm', dammLiquidityRouter);
 
 // Launch token endpoint - returns unsigned transaction
 app.post('/launch', async (req: Request, res: Response) => {
@@ -352,12 +407,6 @@ async function startServer() {
       console.log(`\nEndpoints:`);
       console.log(`  POST /launch                    - Create unsigned transaction`);
       console.log(`  POST /confirm-launch            - Confirm partially signed transaction`);
-      console.log(`  POST /fee-claim/claim           - Build fee claim transaction for Meteora DAMM v2`);
-      console.log(`  POST /fee-claim/confirm         - Confirm fee claim transaction`);
-      console.log(`  POST /damm/withdraw/build       - Build DAMM liquidity withdrawal transaction`);
-      console.log(`  POST /damm/withdraw/confirm     - Confirm DAMM withdrawal (manager only)`);
-      console.log(`  POST /damm/deposit/build        - Build DAMM liquidity deposit transaction`);
-      console.log(`  POST /damm/deposit/confirm      - Confirm DAMM deposit (manager only)`);
       console.log(`  GET  /claims/:tokenAddress      - Get claim eligibility info`);
       console.log(`  POST /claims/mint               - Create unsigned mint transaction`);
       console.log(`  POST /claims/confirm            - Confirm claim transaction`);

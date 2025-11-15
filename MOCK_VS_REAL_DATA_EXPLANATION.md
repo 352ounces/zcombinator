@@ -1604,3 +1604,457 @@ const fetchBalances = async () => {
 5. **Created Tokens**: Empty → Fetched from database
 6. **Accuracy**: Approximate → Exact (real blockchain state)
 
+---
+
+# Filter & Search States: Annotation
+
+## Overview
+
+The Z Combinator platform implements comprehensive filtering and search functionality across multiple pages. This annotation documents the state management, filtering logic, and user interaction patterns for search and filter systems.
+
+---
+
+## 1. Projects Page: Filter & Search States
+
+### **State Variables**
+
+#### **Search Query** (`searchQuery`)
+- **Type**: `string`
+- **Initial Value**: `''` (empty string)
+- **Purpose**: Text input for searching tokens by name, symbol, or address
+- **Placeholder**: `"Enter ticker, contract address..."`
+- **Search Fields**:
+  - Token name (`token_name`)
+  - Token symbol (`token_symbol`)
+  - Token address (`token_address`)
+- **Case Sensitivity**: Case-insensitive (converted to lowercase for comparison)
+- **Real-time**: Updates on every keystroke (`onChange` event)
+
+**Implementation**:
+```typescript
+const [searchQuery, setSearchQuery] = useState('');
+
+// Filter logic
+if (searchQuery) {
+  const query = searchQuery.toLowerCase();
+  filtered = filtered.filter(token => {
+    const name = (token.token_name || '').toLowerCase();
+    const symbol = (token.token_symbol || '').toLowerCase();
+    const address = token.token_address.toLowerCase();
+    return name.includes(query) || symbol.includes(query) || address.includes(query);
+  });
+}
+```
+
+#### **View Mode** (`viewMode`)
+- **Type**: `'all' | 'verified' | 'activeQM'`
+- **Initial Value**: `'all'`
+- **Purpose**: Filter tokens by verification status or active proposals
+- **Options**:
+  - `'all'`: Show all tokens (no filter)
+  - `'verified'`: Show only verified tokens (`token.verified === true`)
+  - `'activeQM'`: Show only tokens with active proposals (`activeProposals > 0`)
+- **UI**: Displayed as filter chips/buttons
+- **State Persistence**: Separate pagination state for `'verified'` vs `'all'` modes
+
+**Implementation**:
+```typescript
+const [viewMode, setViewMode] = useState<'all' | 'verified' | 'activeQM'>('all');
+
+// Filter logic
+if (viewMode === 'verified') {
+  filtered = filtered.filter(token => token.verified);
+} else if (viewMode === 'activeQM') {
+  filtered = filtered.filter(token => {
+    const proposals = proposalsData[token.token_address];
+    return proposals && proposals.active > 0;
+  });
+}
+```
+
+#### **Sort By** (`sortBy`)
+- **Type**: `'mcapHigher' | 'mcapLower' | 'ageNewer' | 'ageOlder' | 'activeProposals'`
+- **Initial Value**: `'mcapHigher'`
+- **Purpose**: Sort filtered tokens by different criteria
+- **Options**:
+  - `'mcapHigher'`: Market cap descending (highest first)
+  - `'mcapLower'`: Market cap ascending (lowest first)
+  - `'ageNewer'`: Launch time descending (newest first)
+  - `'ageOlder'`: Launch time ascending (oldest first)
+  - `'activeProposals'`: Active proposals count descending (most active first)
+- **UI**: Dropdown menu with "Filter by" button
+- **Dropdown State**: Controlled by `isFilterDropdownOpen`
+
+**Implementation**:
+```typescript
+const [sortBy, setSortBy] = useState<'mcapHigher' | 'mcapLower' | 'ageNewer' | 'ageOlder' | 'activeProposals'>('mcapHigher');
+
+// Sort logic
+const sorted = [...filtered].sort((a, b) => {
+  if (sortBy === 'mcapHigher') {
+    const mcapA = marketData[a.token_address]?.market_cap || 0;
+    const mcapB = marketData[b.token_address]?.market_cap || 0;
+    return mcapB - mcapA; // Descending
+  } else if (sortBy === 'mcapLower') {
+    // ... ascending
+  } else if (sortBy === 'ageNewer') {
+    // ... by launch_time descending
+  } else if (sortBy === 'ageOlder') {
+    // ... by launch_time ascending
+  } else if (sortBy === 'activeProposals') {
+    // ... by active proposals count descending
+  }
+});
+```
+
+#### **Filter Dropdown Open** (`isFilterDropdownOpen`)
+- **Type**: `boolean`
+- **Initial Value**: `false`
+- **Purpose**: Control visibility of sort options dropdown
+- **Behavior**: 
+  - Opens on button click
+  - Closes on option selection
+  - Closes on click outside (via `useEffect` with `filterDropdownRef`)
+- **UI**: Dropdown positioned below "Filter by" button
+
+**Implementation**:
+```typescript
+const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+const filterDropdownRef = useRef<HTMLDivElement>(null);
+
+// Close on outside click
+useEffect(() => {
+  const handleClickOutside = (event: MouseEvent) => {
+    if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target as Node)) {
+      setIsFilterDropdownOpen(false);
+    }
+  };
+  if (isFilterDropdownOpen) {
+    document.addEventListener('mousedown', handleClickOutside);
+  }
+  return () => document.removeEventListener('mousedown', handleClickOutside);
+}, [isFilterDropdownOpen]);
+```
+
+#### **Pagination States**
+- **Type**: `number` (page numbers)
+- **Separate States**: 
+  - `allPage`: For `viewMode === 'all'`
+  - `verifiedPage`: For `viewMode === 'verified'`
+- **Purpose**: Maintain separate page numbers for different view modes
+- **Reset**: Automatically resets when filters change (via `useEffect`)
+
+**Implementation**:
+```typescript
+const [verifiedPage, setVerifiedPage] = useState(1);
+const [allPage, setAllPage] = useState(1);
+
+const currentPage = viewMode === 'verified' ? verifiedPage : allPage;
+const setCurrentPage = viewMode === 'verified' ? setVerifiedPage : setAllPage;
+```
+
+---
+
+## 2. Decisions Page: Filter & Search States
+
+### **State Variables**
+
+#### **Search Query** (`searchQuery`)
+- **Type**: `string`
+- **Initial Value**: `''` (empty string)
+- **Purpose**: Text input for searching proposals
+- **Placeholder**: `"Search proposals by title or ID..."`
+- **Search Fields**:
+  - Proposal title (`title`)
+  - Proposal summary (`summary`)
+  - Proposal ID (`id`)
+- **Case Sensitivity**: Case-insensitive
+- **Real-time**: Updates on every keystroke
+
+**Implementation**:
+```typescript
+const [searchQuery, setSearchQuery] = useState('');
+
+// Filter logic
+if (searchQuery) {
+  const query = searchQuery.toLowerCase();
+  return (
+    proposal.title.toLowerCase().includes(query) ||
+    proposal.summary.toLowerCase().includes(query) ||
+    proposal.id.toLowerCase().includes(query)
+  );
+}
+```
+
+#### **View Mode** (`viewMode`)
+- **Type**: `'all' | 'active' | 'passed' | 'failed'`
+- **Initial Value**: `'all'`
+- **Purpose**: Filter proposals by status
+- **Options**:
+  - `'all'`: Show all proposals
+  - `'active'`: Show only active proposals (`status === 'Active'`)
+  - `'passed'`: Show only passed proposals (`status === 'Passed'`)
+  - `'failed'`: Show only failed proposals (`status === 'Failed'`)
+- **UI**: Displayed as filter chips/buttons
+
+**Implementation**:
+```typescript
+const [viewMode, setViewMode] = useState<'all' | 'active' | 'passed' | 'failed'>('all');
+
+// Filter logic
+if (viewMode !== 'all' && proposal.status.toLowerCase() !== viewMode) {
+  return false;
+}
+```
+
+#### **Current Page** (`currentPage`)
+- **Type**: `number`
+- **Initial Value**: `1`
+- **Purpose**: Track current page in pagination
+- **Reset**: Automatically resets to `1` when `viewMode` or `searchQuery` changes
+
+**Implementation**:
+```typescript
+const [currentPage, setCurrentPage] = useState(1);
+
+// Reset on filter change
+useEffect(() => {
+  setCurrentPage(1);
+}, [viewMode, searchQuery]);
+```
+
+---
+
+## 3. Filter & Search State Flow
+
+### **State Dependencies**
+
+```
+┌─────────────────┐
+│  User Input     │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  State Update   │
+│  (setState)     │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  useMemo Hook   │
+│  (Recompute)    │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Filter Logic   │
+│  (Apply filters)│
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Sort Logic     │
+│  (Apply sorting)│
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Pagination     │
+│  (Slice array)  │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  Render UI      │
+└─────────────────┘
+```
+
+### **State Update Triggers**
+
+1. **Search Query Change**:
+   - Trigger: User types in search input
+   - Updates: `searchQuery` state
+   - Effect: Recomputes `filteredTokens` via `useMemo`
+   - Side Effect: Resets pagination to page 1
+
+2. **View Mode Change**:
+   - Trigger: User clicks filter chip (All/Verified/Active QM)
+   - Updates: `viewMode` state
+   - Effect: Recomputes `filteredTokens` via `useMemo`
+   - Side Effect: Switches pagination state (allPage vs verifiedPage)
+
+3. **Sort By Change**:
+   - Trigger: User selects option from dropdown
+   - Updates: `sortBy` state
+   - Effect: Recomputes `filteredTokens` via `useMemo`
+   - Side Effect: Closes dropdown (`setIsFilterDropdownOpen(false)`)
+
+4. **Pagination Change**:
+   - Trigger: User clicks page number or Previous/Next
+   - Updates: `currentPage` state (or `allPage`/`verifiedPage`)
+   - Effect: Slices `filteredTokens` array for current page
+
+---
+
+## 4. Filter Combination Logic
+
+### **Projects Page**
+
+Filters are applied in sequence:
+
+1. **View Mode Filter** (first):
+   ```typescript
+   if (viewMode === 'verified') {
+     filtered = filtered.filter(token => token.verified);
+   } else if (viewMode === 'activeQM') {
+     filtered = filtered.filter(token => proposalsData[token.token_address]?.active > 0);
+   }
+   ```
+
+2. **Search Query Filter** (second):
+   ```typescript
+   if (searchQuery) {
+     filtered = filtered.filter(token => {
+       // Match name, symbol, or address
+     });
+   }
+   ```
+
+3. **Sorting** (third):
+   ```typescript
+   const sorted = [...filtered].sort((a, b) => {
+     // Sort by selected criteria
+   });
+   ```
+
+4. **Pagination** (fourth):
+   ```typescript
+   const paginatedTokens = sorted.slice(startIndex, endIndex);
+   ```
+
+### **Decisions Page**
+
+Filters are applied in sequence:
+
+1. **View Mode Filter** (first):
+   ```typescript
+   if (viewMode !== 'all' && proposal.status !== viewMode) {
+     return false;
+   }
+   ```
+
+2. **Search Query Filter** (second):
+   ```typescript
+   if (searchQuery) {
+     // Match title, summary, or ID
+   }
+   ```
+
+3. **Sorting** (third):
+   ```typescript
+   // Sort: Active first, then by time
+   ```
+
+4. **Pagination** (fourth):
+   ```typescript
+   const paginatedProposals = filtered.slice(startIndex, endIndex);
+   ```
+
+---
+
+## 5. State Persistence & Reset Behavior
+
+### **State Persistence**
+
+- **Within Session**: All filter/search states persist during user session
+- **Between Pages**: States are page-specific (not shared across routes)
+- **Page Refresh**: All states reset to initial values on page refresh
+
+### **Automatic Reset Triggers**
+
+1. **Pagination Reset**:
+   - When `viewMode` changes → Reset to page 1
+   - When `searchQuery` changes → Reset to page 1
+
+2. **Dropdown Close**:
+   - When sort option selected → Close dropdown
+   - When clicking outside → Close dropdown
+
+3. **Filter State Separation**:
+   - `allPage` and `verifiedPage` maintain separate page numbers
+   - Switching between view modes preserves respective page numbers
+
+---
+
+## 6. Performance Optimizations
+
+### **Memoization**
+
+- **Filtered Results**: Wrapped in `useMemo` to prevent unnecessary recalculations
+- **Dependencies**: Only recomputes when relevant states change
+- **Pagination Numbers**: Memoized to avoid recalculating page array
+
+**Example**:
+```typescript
+const filteredTokens = useMemo(() => {
+  // Filter and sort logic
+}, [tokens, viewMode, searchQuery, proposalsData, marketData, sortBy]);
+```
+
+### **Batch Operations**
+
+- **Market Data Fetching**: Batched to avoid excessive API calls
+- **Balance Fetching**: Processed in batches of 10 tokens
+- **Metadata Fetching**: Cached in state to avoid duplicate requests
+
+---
+
+## 7. Empty States & Loading States
+
+### **Empty States**
+
+1. **No Results**:
+   - Trigger: `filteredTokens.length === 0` after applying filters
+   - Message: `"No tokens launched yet"` or `"No proposals found"`
+   - UI: Centered text message
+
+2. **Loading State**:
+   - Trigger: `loading === true` during data fetch
+   - Message: `"Loading tokens..."` or `"Loading proposals..."`
+   - UI: Centered text message
+
+### **State Transitions**
+
+```
+Loading → Empty → Results
+   │         │        │
+   └─────────┴────────┘
+      (Data loaded)
+```
+
+---
+
+## Summary
+
+### **Key State Variables**:
+
+**Projects Page**:
+- `searchQuery`: Text search input
+- `viewMode`: Filter by verification/active proposals
+- `sortBy`: Sort criteria selection
+- `isFilterDropdownOpen`: Dropdown visibility
+- `allPage` / `verifiedPage`: Separate pagination states
+
+**Decisions Page**:
+- `searchQuery`: Text search input
+- `viewMode`: Filter by proposal status
+- `currentPage`: Pagination state
+
+### **State Management Patterns**:
+1. **Sequential Filtering**: View mode → Search → Sort → Paginate
+2. **Memoization**: Results computed only when dependencies change
+3. **State Separation**: Different pagination states for different view modes
+4. **Automatic Reset**: Pagination resets on filter changes
+5. **Real-time Updates**: Search updates on every keystroke
+

@@ -18,7 +18,8 @@ if (PRIVY_APP_ID && PRIVY_APP_SECRET) {
   } catch (error) {
     console.warn('Failed to initialize Privy client:', error);
   }
-  
+}
+
 // Rate limiting store (in production, use Redis)
 const rateLimitStore = new Map<string, { attempts: number; resetAt: number }>();
 
@@ -43,6 +44,10 @@ export interface VerificationAuditLog {
  * Verify Privy authentication token and extract user data
  */
 export async function verifyPrivyAuth(request: NextRequest) {
+  if (!privyClient) {
+    throw new Error('Privy client not initialized. NEXT_PUBLIC_PRIVY_APP_ID and PRIVY_APP_SECRET must be set');
+  }
+
   const authHeader = request.headers.get('authorization');
 
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
