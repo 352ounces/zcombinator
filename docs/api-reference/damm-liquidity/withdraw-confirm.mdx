@@ -230,7 +230,7 @@ result = response.json()
     }
     ```
 
-    Token program instructions must be Transfer (3), InitializeAccount (9), or TransferChecked (12) only.
+    Token program instructions must be Transfer (3), InitializeAccount (9), TransferChecked (12), or SyncNative (17) only. SyncNative is required for wrapping SOL to WSOL.
   </Accordion>
 
   <Accordion title="400 - Invalid Transfer Authority">
@@ -383,7 +383,8 @@ This endpoint implements comprehensive transaction validation to prevent attacks
   </Accordion>
 
   <Accordion title="5. Token Instruction Validation">
-    - Only Transfer (opcode 3), InitializeAccount (opcode 9), and TransferChecked (opcode 12) are allowed
+    - Only Transfer (opcode 3), InitializeAccount (opcode 9), TransferChecked (opcode 12), and SyncNative (opcode 17) are allowed
+    - SyncNative is required for wrapping SOL to WSOL in native SOL withdrawals
     - All transfers must be signed by the LP owner
     - Transfer amounts cannot exceed calculated withdrawal amounts
   </Accordion>

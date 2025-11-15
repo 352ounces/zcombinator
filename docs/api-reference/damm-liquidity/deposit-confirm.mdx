@@ -236,7 +236,7 @@ result = response.json()
     }
     ```
 
-    Token program instructions must be Transfer (3), InitializeAccount (9), or TransferChecked (12) only.
+    Token program instructions must be Transfer (3), InitializeAccount (9), TransferChecked (12), or SyncNative (17) only. SyncNative is required for wrapping SOL to WSOL.
   </Accordion>
 
   <Accordion title="400 - Invalid Transfer Authority">
@@ -297,12 +297,12 @@ result = response.json()
   <Accordion title="400 - Unauthorized LP Owner SOL Transfer">
     ```json
     {
-      "error": "Invalid transaction: LP owner SOL transfers not allowed in deposit flow",
-      "details": "Instruction 10 unauthorized LP owner SOL transfer"
+      "error": "Invalid transaction: LP owner SOL transfers must be to WSOL account only",
+      "details": "Instruction 10 unauthorized destination for LP owner SOL transfer"
     }
     ```
 
-    CRITICAL SECURITY: LP owner cannot make SOL transfers during deposit (potential drainage attack).
+    SECURITY: LP owner SOL transfers are only allowed to whitelisted destinations (LP owner's WSOL account for wrapping SOL, or self-transfers for account creation). This prevents fund drainage attacks while allowing legitimate SOL wrapping operations.
   </Accordion>
 
   <Accordion title="500 - Configuration Error">
@@ -419,7 +419,8 @@ This endpoint implements the most comprehensive transaction validation to preven
   </Accordion>
 
   <Accordion title="6. Token Instruction Validation">
-    - Only Transfer (opcode 3), InitializeAccount (opcode 9), and TransferChecked (opcode 12) are allowed
+    - Only Transfer (opcode 3), InitializeAccount (opcode 9), TransferChecked (opcode 12), and SyncNative (opcode 17) are allowed
+    - SyncNative is required for wrapping SOL to WSOL in native SOL deposits
     - Validates transfer authority (manager wallet or LP owner)
     - Transfer amounts cannot exceed specified deposit amounts
   </Accordion>
@@ -448,7 +449,11 @@ This endpoint implements the most comprehensive transaction validation to preven
   </Accordion>
 
   <Accordion title="10. System Transfer Validation - LP Owner">
-    **CRITICAL SECURITY**: LP owner SOL transfers are NOT allowed during deposit flow. SOL wrapping is handled automatically. If such an instruction exists, it's likely malicious and will be rejected.
+    **SECURITY**: LP owner SOL transfers are whitelisted to specific destinations only:
+    - LP owner's WSOL associated token account (required for wrapping SOL)
+    - LP owner's own address (for self-transfers needed for account creation)
+
+    This prevents fund drainage while allowing legitimate SOL wrapping operations required for native SOL deposits. Any transfers to other addresses are rejected.
   </Accordion>
 
   <Accordion title="11. ATA Instruction Validation">
