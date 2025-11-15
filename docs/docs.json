@@ -52,14 +52,14 @@
         "tab": "API Reference",
         "groups": [
           {
-            "group": "Launch endpoints",
+            "group": "Launch",
             "pages": [
               "api-reference/launch/create",
               "api-reference/launch/confirm"
             ]
           },
           {
-            "group": "Claims endpoints",
+            "group": "Claim token emissions (dev)",
             "pages": [
               "api-reference/claims/eligibility",
               "api-reference/claims/mint",
@@ -67,14 +67,14 @@
             ]
           },
           {
-            "group": "Fee Claim endpoints",
+            "group": "Claim LP fees",
             "pages": [
               "api-reference/fee-claim/claim",
               "api-reference/fee-claim/confirm"
             ]
           },
           {
-            "group": "DAMM Liquidity endpoints",
+            "group": "Manage AMM liquidity",
             "pages": [
               "api-reference/damm-liquidity/withdraw-build",
               "api-reference/damm-liquidity/withdraw-confirm",
@@ -83,7 +83,7 @@
             ]
           },
           {
-            "group": "Utility endpoints",
+            "group": "Utility",
             "pages": [
               "api-reference/utility/health",
               "api-reference/utility/verify-token"
