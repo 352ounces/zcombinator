@@ -1232,7 +1232,7 @@ router.post('/deposit/confirm', dammLiquidityLimiter, async (req: Request, res: 
     const COMPUTE_BUDGET_PROGRAM_ID = ComputeBudgetProgram.programId;
     const LIGHTHOUSE_PROGRAM_ID = new PublicKey("L2TExMFKdjpN9kozasaurPirfHy9P8sbXoAN1qA3S95");
     const METEORA_CP_AMM_PROGRAM_ID = new PublicKey("CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C");
-    const METEORA_DAMM_V2_PROGRAM_ID = new PublicKey("cpamdpZCGKy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG");
+    const METEORA_DAMM_V2_PROGRAM_ID = new PublicKey("cpamdpZCGKUy5JxQXB4dcpGPiikHawvSWAd6mEn1sGG");
 
     const lpOwnerAddress = new PublicKey(depositData.lpOwnerAddress);
     const managerAddress = new PublicKey(depositData.managerAddress);
