@@ -55,8 +55,8 @@ result = response.json()
 
 ## Request Parameters
 
-<ParamField body="withdrawalPercentage" type="number" required>
-  Percentage of unlocked liquidity to withdraw (0 < value <= 15). For example, `12.5` withdraws 12.5% of available liquidity. **Maximum 15% to prevent excessive liquidity removal.**
+<ParamField body="withdrawalPercentage" type="number" required={true}>
+  Percentage of unlocked liquidity to withdraw (`0 < value <= 15`). For example, `12.5` withdraws 12.5% of available liquidity. **Maximum 15% to prevent excessive liquidity removal.**
 </ParamField>
 
 ## Response
